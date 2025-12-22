@@ -17,21 +17,21 @@ exports.sendOtp = async (req, res) => {
   user.otpExpiry = Date.now() + 5 * 60 * 1000;
   await user.save();
 
-  await sendEmail(email, "Baatkro OTP", `Your OTP is ${otp}`);
+  // 🔥 FIX: Pass just the OTP number, not the full message
+  await sendEmail(email, `Your Baatkro OTP: ${otp}`, otp);
 
   res.json({ message: "OTP sent" });
 };
 
 // VERIFY OTP → LOGIN / REGISTER
 exports.verifyOtp = async (req, res) => {
-  const { email, otp, name } = req.body; // 🔥 ADD NAME
+  const { email, otp, name } = req.body;
 
   const user = await User.findOne({ email });
   if (!user || user.otp !== otp || user.otpExpiry < Date.now()) {
     return res.status(400).json({ message: "Invalid OTP" });
   }
 
-  // 🔥 UPDATE NAME IF PROVIDED
   if (name) {
     user.name = name;
   }
@@ -53,7 +53,6 @@ exports.verifyOtp = async (req, res) => {
     email: user.email
   });
 };
-
 // 🔥 NEW: Get user profile
 exports.getUserProfile = async (req, res) => {
   try {
