@@ -18,35 +18,41 @@ const server = http.createServer(app);
 
 // 🔥 Socket.IO server with proper CORS
 const io = new Server(server, {
-  cors: { 
+  cors: {
     origin: "*",
     methods: ["GET", "POST"]
   },
-  transports: ['websocket', 'polling']
+  transports: ["websocket", "polling"]
 });
 
 // socket logic alag file me
 require("./src/socket/chatSocket")(io);
 
-// Get local IP address
+// Get local IP address (local dev only)
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
+      if (iface.family === "IPv4" && !iface.internal) {
         return iface.address;
       }
     }
   }
-  return 'localhost';
+  return "localhost";
 }
 
-// Listen on all network interfaces
-server.listen(3000, '0.0.0.0', () => {
-  const localIP = getLocalIP();
-  console.log("🚀 Baatkro backend running on port 3000");
-  console.log("📡 Access URLs:");
-  console.log(`   - Local:   http://localhost:3000`);
-  console.log(`   - Network: http://${localIP}:3000`);
-  console.log(`   - Socket:  ws://${localIP}:3000`);
+const PORT = process.env.PORT || 3000;
+
+// ✅ Render-compatible listen
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Baatkro backend running on port ${PORT}`);
+
+  // ye logs local dev ke liye helpful hain
+  if (!process.env.RENDER) {
+    const localIP = getLocalIP();
+    console.log("📡 Access URLs:");
+    console.log(`   - Local:   http://localhost:${PORT}`);
+    console.log(`   - Network: http://${localIP}:${PORT}`);
+    console.log(`   - Socket:  ws://${localIP}:${PORT}`);
+  }
 });
