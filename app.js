@@ -3,20 +3,28 @@ const http = require("http");
 const { Server } = require("socket.io");
 const dotenv = require("dotenv");
 const mongoose = require("mongoose");
-const os = require("os");
 
 dotenv.config();
-mongoose.connect(process.env.MONGO_URI);
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch(err => console.error("❌ MongoDB connection error:", err));
 
 const app = express();
 app.use(express.json());
+
+// Health check endpoint
+app.get("/", (req, res) => {
+  res.json({ message: "Baatkro API is running!" });
+});
 
 app.use("/api/auth", require("./src/routes/authRoutes"));
 app.use("/api/room", require("./src/routes/roomRoutes"));
 
 const server = http.createServer(app);
 
-// 🔥 Socket.IO server with proper CORS
+// Socket.IO server with proper CORS
 const io = new Server(server, {
   cors: {
     origin: "*",
@@ -25,34 +33,14 @@ const io = new Server(server, {
   transports: ["websocket", "polling"]
 });
 
-// socket logic alag file me
+// Socket logic
 require("./src/socket/chatSocket")(io);
 
-// Get local IP address (local dev only)
-function getLocalIP() {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === "IPv4" && !iface.internal) {
-        return iface.address;
-      }
-    }
-  }
-  return "localhost";
-}
-
+// ✅ CRITICAL: Use PORT from environment
 const PORT = process.env.PORT || 3000;
 
-// ✅ Render-compatible listen
-server.listen(PORT, "0.0.0.0", () => {
+// ✅ CRITICAL: Listen without specifying host for Render
+server.listen(PORT, () => {
   console.log(`🚀 Baatkro backend running on port ${PORT}`);
-
-  // ye logs local dev ke liye helpful hain
-  if (!process.env.RENDER) {
-    const localIP = getLocalIP();
-    console.log("📡 Access URLs:");
-    console.log(`   - Local:   http://localhost:${PORT}`);
-    console.log(`   - Network: http://${localIP}:${PORT}`);
-    console.log(`   - Socket:  ws://${localIP}:${PORT}`);
-  }
+  console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
