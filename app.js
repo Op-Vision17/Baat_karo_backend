@@ -21,6 +21,8 @@ app.get("/", (req, res) => {
 
 app.use("/api/auth", require("./src/routes/authRoutes"));
 app.use("/api/room", require("./src/routes/roomRoutes"));
+app.use("/api/upload", require("./src/routes/uploadRoutes"));
+
 
 const server = http.createServer(app);
 

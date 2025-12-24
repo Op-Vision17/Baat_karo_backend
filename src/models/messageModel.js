@@ -4,15 +4,21 @@ const messageSchema = new mongoose.Schema(
   {
     roomId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Room"
+      ref: "Room",
+      required: true
     },
     sender: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User"
+      ref: "User",
+      required: true
     },
     text: {
       type: String,
-      required: true
+      default: "" 
+    },
+    imageUrl: {
+      type: String,
+      default: null 
     }
   },
   { timestamps: true }

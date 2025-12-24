@@ -16,12 +16,15 @@
   "dependencies": {
     "@sendgrid/mail": "^8.1.6",
     "axios": "^1.13.2",
+    "cloudinary": "^2.8.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.20.4",
+    "multer": "^2.0.2",
     "nodemailer": "^7.0.11",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "streamifier": "^0.1.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"

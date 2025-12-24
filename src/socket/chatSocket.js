@@ -7,7 +7,8 @@ module.exports = (io) => {
 
   // 🔐 SOCKET AUTH MIDDLEWARE
   io.use((socket, next) => {
-    const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+    const token =
+      socket.handshake.auth?.token || socket.handshake.query?.token;
 
     if (!token) {
       return next(new Error("No token provided"));
@@ -39,7 +40,6 @@ module.exports = (io) => {
         return;
       }
 
-      // Check if user is member
       if (!room.members.includes(socket.userId)) {
         socket.emit("error", { message: "Access denied" });
         return;
@@ -49,47 +49,61 @@ module.exports = (io) => {
       console.log(`User ${socket.userId} joined room ${roomId}`);
     });
 
-    // 💬 SEND MESSAGE
-    socket.on("sendMessage", async ({ roomId, text }) => {
+    // 💬 SEND MESSAGE (TEXT + IMAGE)
+    socket.on("sendMessage", async ({ roomId, text, imageUrl }) => {
       try {
-        console.log(`💬 Received message from ${socket.userId}:`, { roomId, text });
+        console.log("💬 Incoming:", {
+          user: socket.userId,
+          roomId,
+          text,
+          imageUrl
+        });
 
         if (!mongoose.Types.ObjectId.isValid(roomId)) {
           socket.emit("error", { message: "Invalid room ID" });
           return;
         }
 
-        // 1️⃣ Save message to DB
+        // ❌ Empty message guard
+        if (!text && !imageUrl) {
+          socket.emit("error", { message: "Message cannot be empty" });
+          return;
+        }
+
+        // 1️⃣ Save message
         const message = await Message.create({
           roomId,
           sender: socket.userId,
-          text
+          text: text || "",
+          imageUrl: imageUrl || null
         });
 
-        // 2️⃣ Populate sender info
-        const populatedMessage = await Message.findById(message._id)
+        // 2️⃣ Populate sender
+        const populated = await Message.findById(message._id)
           .populate("sender", "name email");
 
-        console.log("✅ Message saved to DB:", message._id);
-
-        // 3️⃣ Broadcast to room
+        // 3️⃣ Broadcast
         io.to(roomId).emit("receiveMessage", {
-          _id: populatedMessage._id,
-          roomId: populatedMessage.roomId,
+          _id: populated._id,
+          roomId: populated.roomId,
           sender: {
-            _id: populatedMessage.sender._id,
-            name: populatedMessage.sender.name,
-            email: populatedMessage.sender.email
+            _id: populated.sender._id,
+            name: populated.sender.name,
+            email: populated.sender.email
           },
-          text: populatedMessage.text,
-          createdAt: populatedMessage.createdAt
+          text: populated.text,
+          imageUrl: populated.imageUrl,
+          createdAt: populated.createdAt
         });
 
-        console.log(`📡 Message broadcasted to room ${roomId}`);
+        console.log("📡 Message broadcasted:", message._id);
 
       } catch (err) {
         console.error("❌ Message error:", err);
-        socket.emit("error", { message: "Failed to send message", error: err.message });
+        socket.emit("error", {
+          message: "Failed to send message",
+          error: err.message
+        });
       }
     });
 
