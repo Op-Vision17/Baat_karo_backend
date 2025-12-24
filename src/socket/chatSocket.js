@@ -4,6 +4,8 @@ const Room = require("../models/roomModel");
 const mongoose = require("mongoose");
 
 module.exports = (io) => {
+  // 🔥 Track users in rooms: { roomId: Set([userId1, userId2, ...]) }
+  const roomUsers = new Map();
 
   // 🔐 SOCKET AUTH MIDDLEWARE
   io.use((socket, next) => {
@@ -46,7 +48,19 @@ module.exports = (io) => {
       }
 
       socket.join(roomId);
+      socket.currentRoom = roomId; // 🔥 Store current room on socket
+
+      // 🔥 Add user to online tracking
+      if (!roomUsers.has(roomId)) {
+        roomUsers.set(roomId, new Set());
+      }
+      roomUsers.get(roomId).add(socket.userId);
+
+      // 🔥 Broadcast updated online users to everyone in the room
+      io.to(roomId).emit("onlineUsers", Array.from(roomUsers.get(roomId)));
+
       console.log(`User ${socket.userId} joined room ${roomId}`);
+      console.log(`✅ Online users in room ${roomId}:`, Array.from(roomUsers.get(roomId)));
     });
 
     // 💬 SEND MESSAGE (TEXT + IMAGE)
@@ -110,6 +124,26 @@ module.exports = (io) => {
     // ❌ DISCONNECT
     socket.on("disconnect", () => {
       console.log("User disconnected:", socket.userId);
+
+      // 🔥 Remove user from online tracking
+      if (socket.currentRoom && roomUsers.has(socket.currentRoom)) {
+        roomUsers.get(socket.currentRoom).delete(socket.userId);
+
+        // 🔥 Broadcast updated online users to remaining users in the room
+        io.to(socket.currentRoom).emit(
+          "onlineUsers",
+          Array.from(roomUsers.get(socket.currentRoom))
+        );
+
+        console.log(`👋 User ${socket.userId} left room ${socket.currentRoom}`);
+        console.log(`✅ Remaining online users:`, Array.from(roomUsers.get(socket.currentRoom)));
+
+        // 🧹 Clean up empty room tracking
+        if (roomUsers.get(socket.currentRoom).size === 0) {
+          roomUsers.delete(socket.currentRoom);
+          console.log(`🧹 Cleaned up empty room: ${socket.currentRoom}`);
+        }
+      }
     });
   });
 };
