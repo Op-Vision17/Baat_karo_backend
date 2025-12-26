@@ -5,21 +5,29 @@ const messageSchema = new mongoose.Schema(
     roomId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Room",
-      required: true
+      required: true,
     },
     sender: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true
+      required: true,
     },
     text: {
       type: String,
-      default: "" 
+      default: "",
     },
     imageUrl: {
       type: String,
-      default: null 
-    }
+      default: null,
+    },
+    voiceUrl: {
+      type: String,
+      default: null,
+    },
+    voiceDuration: {
+      type: Number, 
+      default: null,
+    },
   },
   { timestamps: true }
 );

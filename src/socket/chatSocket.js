@@ -4,10 +4,8 @@ const Room = require("../models/roomModel");
 const mongoose = require("mongoose");
 
 module.exports = (io) => {
-  // 🔥 Track users in rooms: { roomId: Set([userId1, userId2, ...]) }
   const roomUsers = new Map();
 
-  // 🔐 SOCKET AUTH MIDDLEWARE
   io.use((socket, next) => {
     const token =
       socket.handshake.auth?.token || socket.handshake.query?.token;
@@ -25,11 +23,9 @@ module.exports = (io) => {
     }
   });
 
-  // 🔌 SOCKET CONNECTION
   io.on("connection", (socket) => {
     console.log("User connected:", socket.userId);
 
-    // 🏠 JOIN ROOM
     socket.on("joinRoom", async (roomId) => {
       if (!mongoose.Types.ObjectId.isValid(roomId)) {
         socket.emit("error", { message: "Invalid room ID" });
@@ -48,97 +44,108 @@ module.exports = (io) => {
       }
 
       socket.join(roomId);
-      socket.currentRoom = roomId; // 🔥 Store current room on socket
+      socket.currentRoom = roomId;
 
-      // 🔥 Add user to online tracking
       if (!roomUsers.has(roomId)) {
         roomUsers.set(roomId, new Set());
       }
       roomUsers.get(roomId).add(socket.userId);
 
-      // 🔥 Broadcast updated online users to everyone in the room
       io.to(roomId).emit("onlineUsers", Array.from(roomUsers.get(roomId)));
 
       console.log(`User ${socket.userId} joined room ${roomId}`);
-      console.log(`✅ Online users in room ${roomId}:`, Array.from(roomUsers.get(roomId)));
     });
 
-    // 💬 SEND MESSAGE (TEXT + IMAGE)
-    socket.on("sendMessage", async ({ roomId, text, imageUrl }) => {
-      try {
-        console.log("💬 Incoming:", {
-          user: socket.userId,
-          roomId,
-          text,
-          imageUrl
-        });
-
-        if (!mongoose.Types.ObjectId.isValid(roomId)) {
-          socket.emit("error", { message: "Invalid room ID" });
-          return;
-        }
-
-        // ❌ Empty message guard
-        if (!text && !imageUrl) {
-          socket.emit("error", { message: "Message cannot be empty" });
-          return;
-        }
-
-        // 1️⃣ Save message
-        const message = await Message.create({
-          roomId,
-          sender: socket.userId,
-          text: text || "",
-          imageUrl: imageUrl || null
-        });
-
-        // 2️⃣ Populate sender
-        const populated = await Message.findById(message._id)
-          .populate("sender", "name email");
-
-        // 3️⃣ Broadcast
-        io.to(roomId).emit("receiveMessage", {
-          _id: populated._id,
-          roomId: populated.roomId,
-          sender: {
-            _id: populated.sender._id,
-            name: populated.sender.name,
-            email: populated.sender.email
-          },
-          text: populated.text,
-          imageUrl: populated.imageUrl,
-          createdAt: populated.createdAt
-        });
-
-        console.log("📡 Message broadcasted:", message._id);
-
-      } catch (err) {
-        console.error("❌ Message error:", err);
-        socket.emit("error", {
-          message: "Failed to send message",
-          error: err.message
-        });
-      }
+    // 💬 SEND MESSAGE (TEXT + IMAGE + VOICE)
+    // 💬 SEND MESSAGE (TEXT + IMAGE + VOICE)
+socket.on("sendMessage", async ({ roomId, text, imageUrl, voiceUrl, voiceDuration }) => {
+  try {
+    console.log("💬 Incoming:", {
+      user: socket.userId,
+      roomId,
+      text,
+      imageUrl,
+      voiceUrl,
+      voiceDuration
     });
 
-    // ❌ DISCONNECT
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+      socket.emit("error", { message: "Invalid room ID" });
+      return;
+    }
+
+    // ❌ Empty message guard
+    if (!text && !imageUrl && !voiceUrl) {
+      socket.emit("error", { message: "Message cannot be empty" });
+      return;
+    }
+
+    // 1️⃣ Save message
+    const message = await Message.create({
+      roomId,
+      sender: socket.userId,
+      text: text || "",
+      imageUrl: imageUrl || null,
+      voiceUrl: voiceUrl || null,
+      voiceDuration: voiceDuration || null
+    });
+
+    console.log("✅ Message saved to DB:", message._id);
+
+    // 2️⃣ Populate sender
+    const populated = await Message.findById(message._id)
+      .populate("sender", "name email");
+
+    console.log("✅ Message populated:", populated);
+
+    // 🔥 ADD: Check what rooms the socket is in
+    console.log("📍 Socket rooms:", Array.from(socket.rooms));
+    console.log("📍 Target room:", roomId);
+
+    const payload = {
+      _id: populated._id,
+      roomId: populated.roomId,
+      sender: {
+        _id: populated.sender._id,
+        name: populated.sender.name,
+        email: populated.sender.email
+      },
+      text: populated.text,
+      imageUrl: populated.imageUrl,
+      voiceUrl: populated.voiceUrl,
+      voiceDuration: populated.voiceDuration,
+      createdAt: populated.createdAt
+    };
+
+    console.log("📡 About to broadcast payload:", payload);
+
+    // 3️⃣ Broadcast
+    io.to(roomId).emit("receiveMessage", payload);
+
+    console.log("📡 Message broadcasted to room:", roomId);
+
+  } catch (err) {
+    console.error("❌ Message error:", err);
+    socket.emit("error", {
+      message: "Failed to send message",
+      error: err.message
+    });
+  }
+});
+
     socket.on("disconnect", () => {
       console.log("User disconnected:", socket.userId);
 
-      // 🔥 Remove user from online tracking
       if (socket.currentRoom && roomUsers.has(socket.currentRoom)) {
         roomUsers.get(socket.currentRoom).delete(socket.userId);
 
-        // 🔥 Broadcast updated online users to remaining users in the room
         io.to(socket.currentRoom).emit(
           "onlineUsers",
           Array.from(roomUsers.get(socket.currentRoom))
         );
 
         console.log(`👋 User ${socket.userId} left room ${socket.currentRoom}`);
-        console.log(`✅ Remaining online users:`, Array.from(roomUsers.get(socket.currentRoom)));
 
-        // 🧹 Clean up empty room tracking
         if (roomUsers.get(socket.currentRoom).size === 0) {
           roomUsers.delete(socket.currentRoom);
           console.log(`🧹 Cleaned up empty room: ${socket.currentRoom}`);
