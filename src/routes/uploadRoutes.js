@@ -14,7 +14,6 @@ router.post(
       if (!req.file) {
         return res.status(400).json({ message: "No image provided" });
       }
-
       const uploadStream = cloudinary.uploader.upload_stream(
         { 
           folder: "baatkro/chat/images",

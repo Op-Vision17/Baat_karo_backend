@@ -13,7 +13,7 @@ exports.getOTPEmailHTML = (otp, recipientName = 'User') => {
             <td align="center">
                 <!-- Main Container -->
                 <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">
-                    
+
                     <!-- Header with Gradient -->
                     <tr>
                         <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
@@ -25,7 +25,6 @@ exports.getOTPEmailHTML = (otp, recipientName = 'User') => {
                             </p>
                         </td>
                     </tr>
-                    
                     <!-- Content -->
                     <tr>
                         <td style="padding: 50px 40px;">
