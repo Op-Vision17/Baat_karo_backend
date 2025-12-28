@@ -105,6 +105,48 @@ exports.getRoomDetails = async (req, res) => {
   }
 };
 
+// 🔥 NEW: Update room (name and/or photo) - Only creator can update
+exports.updateRoom = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { name, roomPhoto } = req.body;
+
+    const room = await Room.findById(roomId);
+
+    if (!room) {
+      return res.status(404).json({ message: "Room not found" });
+    }
+
+    // Check if user is creator
+    if (room.createdBy.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Only creator can update room" });
+    }
+
+    // Update fields if provided
+    if (name && name.trim().length > 0) {
+      room.name = name.trim();
+    }
+
+    if (roomPhoto !== undefined) {
+      room.roomPhoto = roomPhoto; // Can be null to remove photo
+    }
+
+    await room.save();
+
+    const populatedRoom = await Room.findById(room._id)
+      .populate('createdBy', 'name email profilePhoto')
+      .populate('members', 'name email profilePhoto');
+
+    res.json({ 
+      message: "Room updated successfully",
+      room: populatedRoom 
+    });
+  } catch (err) {
+    console.error("Update room error:", err);
+    res.status(500).json({ message: "Failed to update room" });
+  }
+};
+
 // Delete room (only creator)
 exports.deleteRoom = async (req, res) => {
   try {
@@ -175,7 +217,7 @@ exports.getRoomMessages = async (req, res) => {
     }
 
     const messages = await Message.find({ roomId })
-      .populate("sender", "name email profilePhoto") // 🔥 Include profilePhoto
+      .populate("sender", "name email profilePhoto")
       .sort({ createdAt: 1 });
 
     res.json(messages);
