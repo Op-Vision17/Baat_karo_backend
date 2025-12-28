@@ -23,12 +23,12 @@ exports.createRoom = async (req, res) => {
       name,
       roomCode,
       createdBy: req.user.id,
-      members: [req.user.id] // 🔥 CREATOR IS FIRST MEMBER
+      members: [req.user.id]
     });
 
     const populatedRoom = await Room.findById(room._id)
-      .populate('createdBy', 'name email')
-      .populate('members', 'name email');
+      .populate('createdBy', 'name email profilePhoto')
+      .populate('members', 'name email profilePhoto');
 
     res.json(populatedRoom);
   } catch (err) {
@@ -48,15 +48,15 @@ exports.joinRoomByCode = async (req, res) => {
       return res.status(404).json({ message: "Room not found" });
     }
 
-    // 🔥 ADD USER TO MEMBERS IF NOT ALREADY
+    // Add user to members if not already
     if (!room.members.includes(req.user.id)) {
       room.members.push(req.user.id);
       await room.save();
     }
 
     const populatedRoom = await Room.findById(room._id)
-      .populate('createdBy', 'name email')
-      .populate('members', 'name email');
+      .populate('createdBy', 'name email profilePhoto')
+      .populate('members', 'name email profilePhoto');
 
     res.json(populatedRoom);
   } catch (err) {
@@ -65,12 +65,12 @@ exports.joinRoomByCode = async (req, res) => {
   }
 };
 
-// 🔥 NEW: Get all rooms for user
+// Get all rooms for user
 exports.getUserRooms = async (req, res) => {
   try {
     const rooms = await Room.find({ members: req.user.id })
-      .populate('createdBy', 'name email')
-      .populate('members', 'name email')
+      .populate('createdBy', 'name email profilePhoto')
+      .populate('members', 'name email profilePhoto')
       .sort({ updatedAt: -1 });
 
     res.json(rooms);
@@ -80,14 +80,14 @@ exports.getUserRooms = async (req, res) => {
   }
 };
 
-// 🔥 NEW: Get room details with members
+// Get room details with members
 exports.getRoomDetails = async (req, res) => {
   try {
     const { roomId } = req.params;
 
     const room = await Room.findById(roomId)
-      .populate('createdBy', 'name email')
-      .populate('members', 'name email');
+      .populate('createdBy', 'name email profilePhoto')
+      .populate('members', 'name email profilePhoto');
 
     if (!room) {
       return res.status(404).json({ message: "Room not found" });
@@ -105,7 +105,7 @@ exports.getRoomDetails = async (req, res) => {
   }
 };
 
-// 🔥 NEW: Delete room (only creator)
+// Delete room (only creator)
 exports.deleteRoom = async (req, res) => {
   try {
     const { roomId } = req.params;
@@ -134,7 +134,7 @@ exports.deleteRoom = async (req, res) => {
   }
 };
 
-// 🔥 NEW: Leave room
+// Leave room
 exports.leaveRoom = async (req, res) => {
   try {
     const { roomId } = req.params;
@@ -175,7 +175,7 @@ exports.getRoomMessages = async (req, res) => {
     }
 
     const messages = await Message.find({ roomId })
-      .populate("sender", "name email") // 🔥 POPULATE NAME
+      .populate("sender", "name email profilePhoto") // 🔥 Include profilePhoto
       .sort({ createdAt: 1 });
 
     res.json(messages);

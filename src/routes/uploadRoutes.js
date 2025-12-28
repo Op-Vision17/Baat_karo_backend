@@ -4,7 +4,89 @@ const upload = require("../middleware/upload");
 const cloudinary = require("../config/cloudinary");
 const streamifier = require('streamifier');
 
-// Image upload
+// Profile photo upload
+router.post(
+  "/profile-photo",
+  auth,
+  upload.single("profilePhoto"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No image provided" });
+      }
+      
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { 
+          folder: "baatkro/profile-photos",
+          resource_type: "image",
+          transformation: [
+            { width: 400, height: 400, crop: "fill", gravity: "face" },
+            { quality: "auto" }
+          ]
+        },
+        (error, result) => {
+          if (error) {
+            console.error("Cloudinary error:", error);
+            return res.status(500).json({ message: "Upload failed", error: error.message });
+          }
+          res.json({ 
+            profilePhotoUrl: result.secure_url,
+            publicId: result.public_id 
+          });
+        }
+      );
+
+      streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+      
+    } catch (err) {
+      console.error("Upload error:", err);
+      res.status(500).json({ message: "Profile photo upload error", error: err.message });
+    }
+  }
+);
+
+// Room/Group photo upload
+router.post(
+  "/room-photo",
+  auth,
+  upload.single("roomPhoto"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No image provided" });
+      }
+      
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { 
+          folder: "baatkro/room-photos",
+          resource_type: "image",
+          transformation: [
+            { width: 400, height: 400, crop: "fill" },
+            { quality: "auto" }
+          ]
+        },
+        (error, result) => {
+          if (error) {
+            console.error("Cloudinary error:", error);
+            return res.status(500).json({ message: "Upload failed", error: error.message });
+          }
+          res.json({ 
+            roomPhotoUrl: result.secure_url,
+            publicId: result.public_id 
+          });
+        }
+      );
+
+      streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+      
+    } catch (err) {
+      console.error("Upload error:", err);
+      res.status(500).json({ message: "Room photo upload error", error: err.message });
+    }
+  }
+);
+
+// Chat image upload
 router.post(
   "/image",
   auth,
@@ -40,7 +122,7 @@ router.post(
   }
 );
 
-// 🎤 Voice message upload
+// Voice message upload
 router.post(
   "/voice",
   auth,

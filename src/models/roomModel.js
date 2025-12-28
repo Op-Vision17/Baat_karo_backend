@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+
 const roomSchema = new mongoose.Schema(
   {
     name: {
@@ -10,6 +11,10 @@ const roomSchema = new mongoose.Schema(
       unique: true,
       required: true
     },
+    roomPhoto: {
+      type: String,
+      default: null
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -18,7 +23,7 @@ const roomSchema = new mongoose.Schema(
     members: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: "User"
-    }] // 🔥 ADD MEMBERS ARRAY
+    }]
   },
   { timestamps: true }
 );

@@ -56,82 +56,78 @@ module.exports = (io) => {
       console.log(`User ${socket.userId} joined room ${roomId}`);
     });
 
-    // 💬 SEND MESSAGE (TEXT + IMAGE + VOICE)
-    // 💬 SEND MESSAGE (TEXT + IMAGE + VOICE)
-socket.on("sendMessage", async ({ roomId, text, imageUrl, voiceUrl, voiceDuration }) => {
-  try {
-    console.log("💬 Incoming:", {
-      user: socket.userId,
-      roomId,
-      text,
-      imageUrl,
-      voiceUrl,
-      voiceDuration
+    // SEND MESSAGE (TEXT + IMAGE + VOICE)
+    socket.on("sendMessage", async ({ roomId, text, imageUrl, voiceUrl, voiceDuration }) => {
+      try {
+        console.log("💬 Incoming:", {
+          user: socket.userId,
+          roomId,
+          text,
+          imageUrl,
+          voiceUrl,
+          voiceDuration
+        });
+
+        if (!mongoose.Types.ObjectId.isValid(roomId)) {
+          socket.emit("error", { message: "Invalid room ID" });
+          return;
+        }
+
+        // Empty message guard
+        if (!text && !imageUrl && !voiceUrl) {
+          socket.emit("error", { message: "Message cannot be empty" });
+          return;
+        }
+
+        // Save message
+        const message = await Message.create({
+          roomId,
+          sender: socket.userId,
+          text: text || "",
+          imageUrl: imageUrl || null,
+          voiceUrl: voiceUrl || null,
+          voiceDuration: voiceDuration || null
+        });
+
+        console.log("✅ Message saved to DB:", message._id);
+
+        // Populate sender with profile photo
+        const populated = await Message.findById(message._id)
+          .populate("sender", "name email profilePhoto");
+
+        console.log("✅ Message populated:", populated);
+
+        const payload = {
+          _id: populated._id,
+          roomId: populated.roomId,
+          sender: {
+            _id: populated.sender._id,
+            name: populated.sender.name,
+            email: populated.sender.email,
+            profilePhoto: populated.sender.profilePhoto || null
+          },
+          text: populated.text,
+          imageUrl: populated.imageUrl,
+          voiceUrl: populated.voiceUrl,
+          voiceDuration: populated.voiceDuration,
+          createdAt: populated.createdAt
+        };
+
+        console.log("📡 Broadcasting payload:", payload);
+
+        // Broadcast to room
+        io.to(roomId).emit("receiveMessage", payload);
+
+        console.log("📡 Message broadcasted to room:", roomId);
+
+      } catch (err) {
+        console.error("❌ Message error:", err);
+        socket.emit("error", {
+          message: "Failed to send message",
+          error: err.message
+        });
+      }
     });
-
-    if (!mongoose.Types.ObjectId.isValid(roomId)) {
-      socket.emit("error", { message: "Invalid room ID" });
-      return;
-    }
-
-    // ❌ Empty message guard
-    if (!text && !imageUrl && !voiceUrl) {
-      socket.emit("error", { message: "Message cannot be empty" });
-      return;
-    }
-
-    // 1️⃣ Save message
-    const message = await Message.create({
-      roomId,
-      sender: socket.userId,
-      text: text || "",
-      imageUrl: imageUrl || null,
-      voiceUrl: voiceUrl || null,
-      voiceDuration: voiceDuration || null
-    });
-
-    console.log("✅ Message saved to DB:", message._id);
-
-    // 2️⃣ Populate sender
-    const populated = await Message.findById(message._id)
-      .populate("sender", "name email");
-
-    console.log("✅ Message populated:", populated);
-
-    // 🔥 ADD: Check what rooms the socket is in
-    console.log("📍 Socket rooms:", Array.from(socket.rooms));
-    console.log("📍 Target room:", roomId);
-
-    const payload = {
-      _id: populated._id,
-      roomId: populated.roomId,
-      sender: {
-        _id: populated.sender._id,
-        name: populated.sender.name,
-        email: populated.sender.email
-      },
-      text: populated.text,
-      imageUrl: populated.imageUrl,
-      voiceUrl: populated.voiceUrl,
-      voiceDuration: populated.voiceDuration,
-      createdAt: populated.createdAt
-    };
-
-    console.log("📡 About to broadcast payload:", payload);
-
-    // 3️⃣ Broadcast
-    io.to(roomId).emit("receiveMessage", payload);
-
-    console.log("📡 Message broadcasted to room:", roomId);
-
-  } catch (err) {
-    console.error("❌ Message error:", err);
-    socket.emit("error", {
-      message: "Failed to send message",
-      error: err.message
-    });
-  }
-});
 
     socket.on("disconnect", () => {
       console.log("User disconnected:", socket.userId);

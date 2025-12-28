@@ -88,7 +88,8 @@ exports.verifyOtp = async (req, res) => {
       needsOnboarding,
       userId: user._id,
       email: user.email,
-      name: user.name || null
+      name: user.name || null,
+      profilePhoto: user.profilePhoto || null
     });
   } catch (err) {
     console.error("Verify OTP error:", err);
@@ -96,10 +97,10 @@ exports.verifyOtp = async (req, res) => {
   }
 };
 
-// COMPLETE ONBOARDING (Set user name)
+// COMPLETE ONBOARDING (Set user name and optional profile photo)
 exports.completeOnboarding = async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, profilePhoto } = req.body;
 
     if (!name || name.trim().length === 0) {
       return res.status(400).json({ message: "Name is required" });
@@ -112,6 +113,12 @@ exports.completeOnboarding = async (req, res) => {
     }
 
     user.name = name.trim();
+    
+    // Profile photo is optional during onboarding
+    if (profilePhoto) {
+      user.profilePhoto = profilePhoto;
+    }
+    
     await user.save();
 
     res.json({
@@ -119,7 +126,8 @@ exports.completeOnboarding = async (req, res) => {
       user: {
         userId: user._id,
         email: user.email,
-        name: user.name
+        name: user.name,
+        profilePhoto: user.profilePhoto
       }
     });
   } catch (err) {
@@ -172,6 +180,7 @@ exports.getUserProfile = async (req, res) => {
       userId: user._id,
       email: user.email,
       name: user.name,
+      profilePhoto: user.profilePhoto,
       createdAt: user.createdAt
     });
   } catch (err) {
@@ -183,24 +192,33 @@ exports.getUserProfile = async (req, res) => {
 // UPDATE USER PROFILE
 exports.updateProfile = async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, profilePhoto } = req.body;
 
-    if (!name || name.trim().length === 0) {
-      return res.status(400).json({ message: "Name is required" });
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
     }
 
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { name: name.trim() },
-      { new: true }
-    ).select('-otp -otpExpiry -refreshToken');
+    // Update name if provided
+    if (name && name.trim().length > 0) {
+      user.name = name.trim();
+    }
+
+    // Update profile photo if provided
+    if (profilePhoto !== undefined) {
+      user.profilePhoto = profilePhoto; // Can be null to remove photo
+    }
+
+    await user.save();
 
     res.json({
       message: "Profile updated successfully",
       user: {
         userId: user._id,
         email: user.email,
-        name: user.name
+        name: user.name,
+        profilePhoto: user.profilePhoto
       }
     });
   } catch (err) {

@@ -12,6 +12,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  profilePhoto: {
+    type: String,
+    default: null
+  },
   otp: String,
   otpExpiry: Date,
   refreshToken: String
