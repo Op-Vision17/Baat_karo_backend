@@ -1,3 +1,5 @@
+// src/controllers/authController.js - UPDATED WITH FCM TOKEN CLEANUP
+
 const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
 const { sendEmail } = require("../services/emailService");
@@ -170,7 +172,7 @@ exports.refreshToken = async (req, res) => {
 // GET USER PROFILE
 exports.getUserProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-otp -otpExpiry -refreshToken');
+    const user = await User.findById(req.user.id).select('-otp -otpExpiry -refreshToken -fcmTokens');
     
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -181,6 +183,7 @@ exports.getUserProfile = async (req, res) => {
       email: user.email,
       name: user.name,
       profilePhoto: user.profilePhoto,
+      notificationSettings: user.notificationSettings,
       createdAt: user.createdAt
     });
   } catch (err) {
@@ -227,13 +230,25 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
-// LOGOUT
+// ============================================
+// 🔔 LOGOUT - WITH FCM TOKEN CLEANUP (UPDATED)
+// ============================================
 exports.logout = async (req, res) => {
   try {
+    const { fcmToken } = req.body; // Get FCM token from request body
+    
     const user = await User.findById(req.user.id);
     
     if (user) {
+      // Clear refresh token
       user.refreshToken = null;
+      
+      // Remove FCM token if provided
+      if (fcmToken) {
+        await user.removeFcmToken(fcmToken);
+        console.log(`🗑️ FCM token removed for user ${user._id}`);
+      }
+      
       await user.save();
     }
 
