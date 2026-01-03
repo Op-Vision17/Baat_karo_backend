@@ -16,15 +16,33 @@ function initializeFirebase() {
       // PRODUCTION: Use environment variable
       console.log('🔥 Initializing Firebase with environment variable');
       
-      const serviceAccount = JSON.parse(
-        Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf-8')
-      );
+      let serviceAccount;
+      const envVar = process.env.FIREBASE_SERVICE_ACCOUNT;
+      
+      try {
+        // Try to parse as JSON directly first
+        serviceAccount = JSON.parse(envVar);
+        console.log('📄 Parsed as direct JSON');
+      } catch (e) {
+        // If that fails, try base64 decoding
+        console.log('🔓 Attempting base64 decode...');
+        try {
+          const decoded = Buffer.from(envVar, 'base64').toString('utf-8');
+          serviceAccount = JSON.parse(decoded);
+          console.log('📄 Parsed from base64');
+        } catch (e2) {
+          console.error('❌ Failed to parse as JSON or base64:', e2.message);
+          console.error('First 100 chars of env var:', envVar.substring(0, 100));
+          throw new Error('Invalid FIREBASE_SERVICE_ACCOUNT format. Must be valid JSON or base64-encoded JSON.');
+        }
+      }
       
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });
       
       console.log('✅ Firebase initialized from environment variable');
+      console.log('✅ Project ID:', serviceAccount.project_id);
     } else {
       // DEVELOPMENT: Use local file
       console.log('🔥 Initializing Firebase with local file');
