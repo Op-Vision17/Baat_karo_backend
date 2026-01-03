@@ -14,7 +14,7 @@ router.post("/register-token", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "FCM token is required" });
     }
 
-    const user = await User.findById(req.userId);
+    const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -40,7 +40,7 @@ router.post("/remove-token", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "FCM token is required" });
     }
 
-    const user = await User.findById(req.userId);
+    const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -61,7 +61,7 @@ router.put("/settings", authMiddleware, async (req, res) => {
   try {
     const { enabled, messageNotifications, soundEnabled } = req.body;
 
-    const user = await User.findById(req.userId);
+    const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -91,7 +91,7 @@ router.put("/settings", authMiddleware, async (req, res) => {
 // Get notification settings
 router.get("/settings", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.userId);
+    const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
