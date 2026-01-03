@@ -11,23 +11,34 @@ router.post("/register-token", authMiddleware, async (req, res) => {
     const { token, device } = req.body;
 
     if (!token) {
-      return res.status(400).json({ message: "FCM token is required" });
+      return res.status(400).json({ 
+        success: false,  // ADD THIS
+        message: "FCM token is required" 
+      });
     }
 
     const user = await User.findById(req.user.id);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ 
+        success: false,  // ADD THIS
+        message: "User not found" 
+      });
     }
 
-    await user.addFcmToken(token, device || 'web');
+    await user.addFcmToken(token, device || 'android');  // Change 'web' to 'android'
 
     res.status(200).json({ 
+      success: true,  // ✅ ADD THIS LINE
       message: "FCM token registered successfully",
       tokens: user.fcmTokens.length
     });
   } catch (error) {
     console.error("Error registering FCM token:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    res.status(500).json({ 
+      success: false,  // ADD THIS
+      message: "Server error", 
+      error: error.message 
+    });
   }
 });
 
@@ -37,22 +48,33 @@ router.post("/remove-token", authMiddleware, async (req, res) => {
     const { token } = req.body;
 
     if (!token) {
-      return res.status(400).json({ message: "FCM token is required" });
+      return res.status(400).json({ 
+        success: false,  // ADD THIS
+        message: "FCM token is required" 
+      });
     }
 
     const user = await User.findById(req.user.id);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ 
+        success: false,  // ADD THIS
+        message: "User not found" 
+      });
     }
 
     await user.removeFcmToken(token);
 
     res.status(200).json({ 
+      success: true,  // ✅ ADD THIS LINE
       message: "FCM token removed successfully"
     });
   } catch (error) {
     console.error("Error removing FCM token:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    res.status(500).json({ 
+      success: false,  // ADD THIS
+      message: "Server error", 
+      error: error.message 
+    });
   }
 });
 
@@ -63,7 +85,10 @@ router.put("/settings", authMiddleware, async (req, res) => {
 
     const user = await User.findById(req.user.id);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ 
+        success: false,  // ADD THIS
+        message: "User not found" 
+      });
     }
 
     if (enabled !== undefined) {
@@ -79,12 +104,17 @@ router.put("/settings", authMiddleware, async (req, res) => {
     await user.save();
 
     res.status(200).json({ 
+      success: true,  // ✅ ADD THIS LINE
       message: "Notification settings updated",
       settings: user.notificationSettings
     });
   } catch (error) {
     console.error("Error updating notification settings:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    res.status(500).json({ 
+      success: false,  // ADD THIS
+      message: "Server error", 
+      error: error.message 
+    });
   }
 });
 
@@ -93,16 +123,24 @@ router.get("/settings", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ 
+        success: false,  // ADD THIS
+        message: "User not found" 
+      });
     }
 
     res.status(200).json({ 
+      success: true,  // ✅ ADD THIS LINE
       settings: user.notificationSettings,
       tokenCount: user.fcmTokens.length
     });
   } catch (error) {
     console.error("Error fetching notification settings:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    res.status(500).json({ 
+      success: false,  // ADD THIS
+      message: "Server error", 
+      error: error.message 
+    });
   }
 });
 
