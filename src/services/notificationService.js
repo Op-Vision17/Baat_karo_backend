@@ -1,14 +1,52 @@
-// src/services/notificationService.js
+// src/services/notificationService.js - PRODUCTION READY
+
 const admin = require("firebase-admin");
 
-// Initialize Firebase Admin SDK
-// Download your service account key from Firebase Console
-// and save it as serviceAccountKey.json in your project root
-const serviceAccount = require("../../serviceAccountKey.json");
+// Initialize Firebase Admin SDK using environment variables
+let firebaseInitialized = false;
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+function initializeFirebase() {
+  if (firebaseInitialized || admin.apps.length > 0) {
+    return;
+  }
+
+  try {
+    // Check if running in production (Render) or development (local)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      // PRODUCTION: Use environment variable
+      console.log('🔥 Initializing Firebase with environment variable');
+      
+      const serviceAccount = JSON.parse(
+        Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf-8')
+      );
+      
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      
+      console.log('✅ Firebase initialized from environment variable');
+    } else {
+      // DEVELOPMENT: Use local file
+      console.log('🔥 Initializing Firebase with local file');
+      
+      const serviceAccount = require("../../serviceAccountKey.json");
+      
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      
+      console.log('✅ Firebase initialized from local file');
+    }
+    
+    firebaseInitialized = true;
+  } catch (error) {
+    console.error('❌ Error initializing Firebase:', error.message);
+    throw error;
+  }
+}
+
+// Initialize Firebase on module load
+initializeFirebase();
 
 /**
  * Send push notification to a single device
@@ -19,17 +57,36 @@ async function sendNotification(fcmToken, notification, data = {}) {
       notification: {
         title: notification.title,
         body: notification.body,
-        icon: notification.icon || "/default-icon.png"
       },
       data: data,
-      token: fcmToken
+      token: fcmToken,
+      android: {
+        notification: {
+          sound: "default",
+          channelId: "chat_messages"
+        }
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: "default"
+          }
+        }
+      }
     };
 
     const response = await admin.messaging().send(message);
-    console.log("✅ Notification sent successfully:", response);
+    console.log("✅ Notification sent:", response);
     return { success: true, response };
   } catch (error) {
     console.error("❌ Error sending notification:", error);
+    
+    // Handle invalid tokens
+    if (error.code === 'messaging/registration-token-not-registered' ||
+        error.code === 'messaging/invalid-registration-token') {
+      return { success: false, error: error.message, invalidToken: true };
+    }
+    
     return { success: false, error: error.message };
   }
 }
@@ -39,29 +96,53 @@ async function sendNotification(fcmToken, notification, data = {}) {
  */
 async function sendMulticastNotification(fcmTokens, notification, data = {}) {
   try {
+    if (!fcmTokens || fcmTokens.length === 0) {
+      return { success: false, error: "No FCM tokens provided" };
+    }
+
     const message = {
       notification: {
         title: notification.title,
         body: notification.body,
-        icon: notification.icon || "/default-icon.png"
       },
       data: data,
-      tokens: fcmTokens
+      tokens: fcmTokens,
+      android: {
+        notification: {
+          sound: "default",
+          channelId: "chat_messages"
+        }
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: "default"
+          }
+        }
+      }
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
-    console.log(`✅ ${response.successCount} notifications sent successfully`);
+    console.log(`✅ ${response.successCount}/${fcmTokens.length} notifications sent`);
     
-    if (response.failureCount > 0) {
-      console.log(`❌ ${response.failureCount} notifications failed`);
-      response.responses.forEach((resp, idx) => {
-        if (!resp.success) {
-          console.error(`Failed to send to token ${idx}:`, resp.error);
+    // Collect invalid tokens
+    const invalidTokens = [];
+    response.responses.forEach((resp, idx) => {
+      if (!resp.success) {
+        if (resp.error.code === 'messaging/registration-token-not-registered' ||
+            resp.error.code === 'messaging/invalid-registration-token') {
+          invalidTokens.push(fcmTokens[idx]);
         }
-      });
-    }
+      }
+    });
     
-    return { success: true, response };
+    return { 
+      success: true, 
+      response,
+      invalidTokens,
+      successCount: response.successCount,
+      failureCount: response.failureCount
+    };
   } catch (error) {
     console.error("❌ Error sending multicast notification:", error);
     return { success: false, error: error.message };
@@ -71,17 +152,27 @@ async function sendMulticastNotification(fcmTokens, notification, data = {}) {
 /**
  * Send notification about a new message
  */
-async function sendMessageNotification(recipientTokens, senderName, messageText, roomId) {
+async function sendMessageNotification(recipientTokens, senderName, messageText, roomId, messageType = 'text') {
+  // Prepare notification body based on message type
+  let body = messageText;
+  if (messageType === 'image' && !messageText) {
+    body = "📷 Sent an image";
+  } else if (messageType === 'voice' && !messageText) {
+    body = "🎤 Sent a voice message";
+  } else if (messageText && messageText.length > 100) {
+    body = messageText.substring(0, 100) + "...";
+  }
+
   const notification = {
     title: senderName,
-    body: messageText.length > 100 ? messageText.substring(0, 100) + "..." : messageText,
-    icon: "/chat-icon.png"
+    body: body
   };
 
   const data = {
     type: "NEW_MESSAGE",
     roomId: roomId,
-    timestamp: Date.now().toString()
+    timestamp: Date.now().toString(),
+    click_action: "FLUTTER_NOTIFICATION_CLICK"
   };
 
   if (recipientTokens.length === 1) {
@@ -96,4 +187,3 @@ module.exports = {
   sendMulticastNotification,
   sendMessageNotification
 };
-
