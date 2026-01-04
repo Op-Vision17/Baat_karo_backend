@@ -216,11 +216,32 @@ exports.getRoomMessages = async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
+    // Get all messages including deleted ones
     const messages = await Message.find({ roomId })
       .populate("sender", "name email profilePhoto")
       .sort({ createdAt: 1 });
 
-    res.json(messages);
+    // Transform messages: for deleted ones, hide content but keep metadata
+    const transformedMessages = messages.map(msg => {
+      if (msg.isDeleted) {
+        return {
+          _id: msg._id,
+          roomId: msg.roomId,
+          sender: msg.sender,
+          text: "",
+          imageUrl: null,
+          voiceUrl: null,
+          voiceDuration: null,
+          isDeleted: true,
+          deletedAt: msg.deletedAt,
+          createdAt: msg.createdAt,
+          updatedAt: msg.updatedAt
+        };
+      }
+      return msg;
+    });
+
+    res.json(transformedMessages);
   } catch (err) {
     res.status(500).json({ message: "Failed to get messages" });
   }

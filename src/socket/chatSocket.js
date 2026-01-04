@@ -1,3 +1,4 @@
+// backend/src/socket/chatSocket.js
 const jwt = require("jsonwebtoken");
 const Message = require("../models/messageModel");
 const Room = require("../models/roomModel");
@@ -7,6 +8,8 @@ const { sendMessageNotification } = require("../services/notificationService");
 
 module.exports = (io) => {
   const roomUsers = new Map(); // Track online users per room
+  const typingUsers = new Map(); // Track typing users per room: roomId -> Set of userId
+  const typingTimeouts = new Map(); // Auto-clear typing after timeout: userId-roomId -> timeout
 
   // Authentication middleware
   io.use((socket, next) => {
@@ -55,10 +58,81 @@ module.exports = (io) => {
       }
       roomUsers.get(roomId).add(socket.userId);
 
+      // Initialize typing users set for this room
+      if (!typingUsers.has(roomId)) {
+        typingUsers.set(roomId, new Map()); // Map of userId -> user info
+      }
+
       // Emit updated online users list
       io.to(roomId).emit("onlineUsers", Array.from(roomUsers.get(roomId)));
 
       console.log(`✅ User ${socket.userId} joined room ${roomId}`);
+    });
+
+    // ✅ TYPING INDICATOR - User started typing
+    socket.on("typing", async ({ roomId, isTyping }) => {
+      try {
+        if (!mongoose.Types.ObjectId.isValid(roomId)) {
+          return;
+        }
+
+        // Get user info for typing indicator
+        const user = await User.findById(socket.userId).select("name profilePhoto");
+        if (!user) return;
+
+        const roomTypingUsers = typingUsers.get(roomId);
+        if (!roomTypingUsers) return;
+
+        const typingKey = `${socket.userId}-${roomId}`;
+
+        if (isTyping) {
+          // Add user to typing list
+          roomTypingUsers.set(socket.userId, {
+            userId: socket.userId,
+            name: user.name,
+            profilePhoto: user.profilePhoto
+          });
+
+          // Clear existing timeout
+          if (typingTimeouts.has(typingKey)) {
+            clearTimeout(typingTimeouts.get(typingKey));
+          }
+
+          // Auto-remove typing after 3 seconds of inactivity
+          const timeout = setTimeout(() => {
+            roomTypingUsers.delete(socket.userId);
+            typingTimeouts.delete(typingKey);
+
+            // Emit updated typing users (excluding sender)
+            socket.to(roomId).emit("typingUpdate", {
+              typingUsers: Array.from(roomTypingUsers.values())
+            });
+          }, 3000);
+
+          typingTimeouts.set(typingKey, timeout);
+
+          console.log(`⌨️ User ${user.name} is typing in room ${roomId}`);
+        } else {
+          // User stopped typing
+          roomTypingUsers.delete(socket.userId);
+
+          // Clear timeout
+          if (typingTimeouts.has(typingKey)) {
+            clearTimeout(typingTimeouts.get(typingKey));
+            typingTimeouts.delete(typingKey);
+          }
+
+          console.log(`✋ User ${user.name} stopped typing in room ${roomId}`);
+        }
+
+        // Broadcast typing status to other users in room (exclude sender)
+        socket.to(roomId).emit("typingUpdate", {
+          typingUsers: Array.from(roomTypingUsers.values())
+        });
+
+      } catch (err) {
+        console.error("❌ Typing indicator error:", err);
+      }
     });
 
     // SEND MESSAGE WITH PUSH NOTIFICATIONS
@@ -71,6 +145,21 @@ module.exports = (io) => {
           hasImage: !!imageUrl,
           hasVoice: !!voiceUrl
         });
+
+        // Clear typing indicator when sending message
+        const roomTypingUsers = typingUsers.get(roomId);
+        if (roomTypingUsers) {
+          roomTypingUsers.delete(socket.userId);
+          const typingKey = `${socket.userId}-${roomId}`;
+          if (typingTimeouts.has(typingKey)) {
+            clearTimeout(typingTimeouts.get(typingKey));
+            typingTimeouts.delete(typingKey);
+          }
+          // Notify others typing stopped
+          socket.to(roomId).emit("typingUpdate", {
+            typingUsers: Array.from(roomTypingUsers.values())
+          });
+        }
 
         // Validate room ID
         if (!mongoose.Types.ObjectId.isValid(roomId)) {
@@ -114,6 +203,7 @@ module.exports = (io) => {
           imageUrl: populated.imageUrl,
           voiceUrl: populated.voiceUrl,
           voiceDuration: populated.voiceDuration,
+          isDeleted: populated.isDeleted,
           createdAt: populated.createdAt
         };
 
@@ -121,17 +211,10 @@ module.exports = (io) => {
         io.to(roomId).emit("receiveMessage", payload);
         console.log("📡 Message broadcasted to room:", roomId);
 
-        // ==========================================
-        // 🔔 SEND PUSH NOTIFICATIONS TO OFFLINE USERS
-        // ==========================================
+        // Push notifications code (keeping your existing code)
         try {
-          // Get room details
           const room = await Room.findById(roomId);
-          
-          // Get currently online users in this room
           const onlineUsers = roomUsers.get(roomId) || new Set();
-          
-          // Find offline users (members who are not online and not the sender)
           const offlineUserIds = room.members.filter(
             memberId => {
               const memberIdStr = memberId.toString();
@@ -142,7 +225,6 @@ module.exports = (io) => {
           if (offlineUserIds.length > 0) {
             console.log(`📢 Sending push notifications to ${offlineUserIds.length} offline users`);
 
-            // Get users with notification settings enabled
             const offlineUsers = await User.find({
               _id: { $in: offlineUserIds },
               'notificationSettings.enabled': true,
@@ -150,9 +232,8 @@ module.exports = (io) => {
             });
 
             if (offlineUsers.length > 0) {
-              // Collect all FCM tokens
               const fcmTokens = [];
-              const userTokenMap = new Map(); // Map to track which tokens belong to which user
+              const userTokenMap = new Map();
               
               offlineUsers.forEach(user => {
                 const tokens = user.getActiveFcmTokens();
@@ -163,7 +244,6 @@ module.exports = (io) => {
               });
 
               if (fcmTokens.length > 0) {
-                // Determine message type and notification text
                 let messageType = 'text';
                 let notificationText = text || "";
                 
@@ -175,7 +255,6 @@ module.exports = (io) => {
                   notificationText = "🎤 Sent a voice message";
                 }
 
-                // Send push notifications
                 const result = await sendMessageNotification(
                   fcmTokens,
                   populated.sender.name,
@@ -187,11 +266,9 @@ module.exports = (io) => {
                 if (result.success) {
                   console.log(`✅ Sent ${result.successCount || 1} push notification(s)`);
                   
-                  // Clean up invalid tokens
                   if (result.invalidTokens && result.invalidTokens.length > 0) {
                     console.log(`🧹 Cleaning up ${result.invalidTokens.length} invalid tokens`);
                     
-                    // Group invalid tokens by user
                     const userInvalidTokens = new Map();
                     result.invalidTokens.forEach(token => {
                       const userId = userTokenMap.get(token);
@@ -203,7 +280,6 @@ module.exports = (io) => {
                       }
                     });
                     
-                    // Remove invalid tokens from each user
                     for (const [userId, tokens] of userInvalidTokens) {
                       const user = offlineUsers.find(u => u._id.toString() === userId);
                       if (user) {
@@ -225,7 +301,6 @@ module.exports = (io) => {
           }
         } catch (notifError) {
           console.error("❌ Error in notification flow:", notifError);
-          // Don't fail the message send if notification fails
         }
 
       } catch (err) {
@@ -237,25 +312,120 @@ module.exports = (io) => {
       }
     });
 
+    // ✅ DELETE MESSAGE EVENT
+    socket.on("deleteMessage", async ({ messageId, roomId }) => {
+      try {
+        console.log("🗑️ Delete message request:", {
+          user: socket.userId,
+          messageId,
+          roomId
+        });
+
+        // Validate IDs
+        if (!mongoose.Types.ObjectId.isValid(messageId)) {
+          socket.emit("error", { message: "Invalid message ID" });
+          return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(roomId)) {
+          socket.emit("error", { message: "Invalid room ID" });
+          return;
+        }
+
+        // Find message
+        const message = await Message.findById(messageId);
+
+        if (!message) {
+          socket.emit("error", { message: "Message not found" });
+          return;
+        }
+
+        // Check if user is the sender
+        if (message.sender.toString() !== socket.userId.toString()) {
+          socket.emit("error", { message: "You can only delete your own messages" });
+          return;
+        }
+
+        // Check if already deleted
+        if (message.isDeleted) {
+          socket.emit("error", { message: "Message already deleted" });
+          return;
+        }
+
+        // Soft delete the message
+        message.isDeleted = true;
+        message.deletedAt = new Date();
+        message.deletedBy = socket.userId;
+        await message.save();
+
+        console.log("✅ Message deleted:", messageId);
+
+        // Broadcast delete event to all users in the room
+        const deletePayload = {
+          messageId: message._id,
+          roomId: message.roomId,
+          deletedBy: socket.userId,
+          deletedAt: message.deletedAt
+        };
+
+        io.to(roomId).emit("messageDeleted", deletePayload);
+        console.log("📡 Delete event broadcasted to room:", roomId);
+
+      } catch (err) {
+        console.error("❌ Delete message error:", err);
+        socket.emit("error", {
+          message: "Failed to delete message",
+          error: err.message
+        });
+      }
+    });
+
     // User disconnect
     socket.on("disconnect", () => {
       console.log("👋 User disconnected:", socket.userId);
 
-      if (socket.currentRoom && roomUsers.has(socket.currentRoom)) {
-        roomUsers.get(socket.currentRoom).delete(socket.userId);
+      if (socket.currentRoom) {
+        const roomId = socket.currentRoom;
 
-        // Notify remaining users about updated online list
-        io.to(socket.currentRoom).emit(
-          "onlineUsers",
-          Array.from(roomUsers.get(socket.currentRoom))
-        );
+        // Remove from online users
+        if (roomUsers.has(roomId)) {
+          roomUsers.get(roomId).delete(socket.userId);
 
-        console.log(`👋 User ${socket.userId} left room ${socket.currentRoom}`);
+          io.to(roomId).emit(
+            "onlineUsers",
+            Array.from(roomUsers.get(roomId))
+          );
 
-        // Clean up empty rooms
-        if (roomUsers.get(socket.currentRoom).size === 0) {
-          roomUsers.delete(socket.currentRoom);
-          console.log(`🧹 Cleaned up empty room: ${socket.currentRoom}`);
+          console.log(`👋 User ${socket.userId} left room ${roomId}`);
+
+          // Clean up empty rooms
+          if (roomUsers.get(roomId).size === 0) {
+            roomUsers.delete(roomId);
+            console.log(`🧹 Cleaned up empty room: ${roomId}`);
+          }
+        }
+
+        // Clear typing indicator
+        const roomTypingUsers = typingUsers.get(roomId);
+        if (roomTypingUsers) {
+          roomTypingUsers.delete(socket.userId);
+
+          // Clear timeout
+          const typingKey = `${socket.userId}-${roomId}`;
+          if (typingTimeouts.has(typingKey)) {
+            clearTimeout(typingTimeouts.get(typingKey));
+            typingTimeouts.delete(typingKey);
+          }
+
+          // Notify others
+          io.to(roomId).emit("typingUpdate", {
+            typingUsers: Array.from(roomTypingUsers.values())
+          });
+
+          // Clean up empty typing room
+          if (roomTypingUsers.size === 0) {
+            typingUsers.delete(roomId);
+          }
         }
       }
     });

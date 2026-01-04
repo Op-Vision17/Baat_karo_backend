@@ -1,3 +1,4 @@
+// backend/src/models/messageModel.js
 const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema(
@@ -28,7 +29,23 @@ const messageSchema = new mongoose.Schema(
       type: Number, 
       default: null,
     },
+    // ✅ DELETE FUNCTIONALITY FIELDS
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   { timestamps: true }
 );
+
+
 module.exports = mongoose.model("Message", messageSchema);
