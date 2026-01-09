@@ -200,8 +200,177 @@ async function sendMessageNotification(recipientTokens, senderName, messageText,
   }
 }
 
+/**
+ * 🔔 Send Call Notification (NEW)
+ */
+async function sendCallNotification(
+  fcmTokens,
+  callerName,
+  roomName,
+  callType,
+  roomId,
+  callId,
+  callerAvatar = null
+) {
+  try {
+    if (!fcmTokens || fcmTokens.length === 0) {
+      return { success: false, error: "No FCM tokens" };
+    }
+
+    const callIcon = callType === "video" ? "📹" : "📞";
+
+    const message = {
+      data: {
+        type: "incoming_call",
+        callType: callType,
+        roomId: roomId,
+        callId: callId,
+        callerName: callerName,
+        roomName: roomName,
+        callerAvatar: callerAvatar || "",
+        timestamp: Date.now().toString(),
+      },
+      notification: {
+        title: `${callIcon} Incoming ${callType} call`,
+        body: `${callerName} is calling in ${roomName}`,
+      },
+      android: {
+        priority: "high",
+        ttl: 30000, // 30 seconds
+        notification: {
+          channelId: "calls",
+          sound: "default",
+          priority: "max",
+          visibility: "public",
+          tag: `call_${callId}`,
+        },
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+        },
+        payload: {
+          aps: {
+            alert: {
+              title: `${callIcon} Incoming ${callType} call`,
+              body: `${callerName} is calling in ${roomName}`,
+            },
+            sound: "default",
+            badge: 1,
+          },
+        },
+      },
+    };
+
+    if (fcmTokens.length === 1) {
+      const response = await admin.messaging().send({
+        ...message,
+        token: fcmTokens[0],
+      });
+      console.log("✅ Call notification sent");
+      return { success: true, messageId: response, successCount: 1 };
+    } else {
+      const response = await admin.messaging().sendEachForMulticast({
+        ...message,
+        tokens: fcmTokens,
+      });
+
+      console.log(`✅ Call notifications sent: ${response.successCount}/${fcmTokens.length}`);
+
+      const invalidTokens = [];
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          if (
+            resp.error?.code === "messaging/invalid-registration-token" ||
+            resp.error?.code === "messaging/registration-token-not-registered"
+          ) {
+            invalidTokens.push(fcmTokens[idx]);
+          }
+        }
+      });
+
+      return {
+        success: response.successCount > 0,
+        successCount: response.successCount,
+        failureCount: response.failureCount,
+        invalidTokens,
+      };
+    }
+  } catch (error) {
+    console.error("❌ Call notification error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 📵 Send Missed Call Notification (NEW)
+ */
+async function sendMissedCallNotification(
+  fcmTokens,
+  callerName,
+  roomName,
+  callType
+) {
+  try {
+    if (!fcmTokens || fcmTokens.length === 0) {
+      return { success: false };
+    }
+
+    const message = {
+      notification: {
+        title: "📵 Missed Call",
+        body: `You missed a ${callType} call from ${callerName} in ${roomName}`,
+      },
+      data: {
+        type: "missed_call",
+        callerName: callerName,
+        roomName: roomName,
+        callType: callType,
+        timestamp: Date.now().toString(),
+      },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "missed_calls",
+          sound: "default",
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            alert: {
+              title: "📵 Missed Call",
+              body: `You missed a ${callType} call from ${callerName} in ${roomName}`,
+            },
+            sound: "default",
+            badge: 1,
+          },
+        },
+      },
+    };
+
+    if (fcmTokens.length === 1) {
+      await admin.messaging().send({ ...message, token: fcmTokens[0] });
+      console.log("✅ Missed call notification sent");
+    } else {
+      const response = await admin.messaging().sendEachForMulticast({
+        ...message,
+        tokens: fcmTokens,
+      });
+      console.log(`✅ Missed call notifications sent: ${response.successCount}/${fcmTokens.length}`);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Missed call notification error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   sendNotification,
   sendMulticastNotification,
-  sendMessageNotification
+  sendMessageNotification,
+  sendCallNotification,        // ✅ NEW
+  sendMissedCallNotification,  // ✅ NEW
 };

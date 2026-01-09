@@ -19,12 +19,15 @@ app.get("/", (req, res) => {
   res.json({ message: "Baatkro API is running!" });
 });
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ROUTES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.use("/api/auth", require("./src/routes/authRoutes"));
 app.use("/api/room", require("./src/routes/roomRoutes"));
 app.use("/api/upload", require("./src/routes/uploadRoutes"));
 app.use("/api/notifications", require("./src/routes/notificationRoutes"));
-
-
+app.use("/api/agora", require("./src/routes/agoraRoutes")); // ✅ NEW
+app.use("/api/calls", require("./src/routes/callRoutes"));   // ✅ NEW
 
 const server = http.createServer(app);
 
@@ -37,13 +40,14 @@ const io = new Server(server, {
   transports: ["websocket", "polling"]
 });
 
-// Socket logic
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SOCKET HANDLERS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 require("./src/socket/chatSocket")(io);
+require("./src/socket/callSocket")(io); // ✅ NEW
 
-// ✅ CRITICAL: Use PORT from environment
 const PORT = process.env.PORT || 3000;
 
-// ✅ CRITICAL: Listen without specifying host for Render
 server.listen(PORT, () => {
   console.log(`🚀 Baatkro backend running on port ${PORT}`);
   console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);

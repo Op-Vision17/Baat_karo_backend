@@ -54,7 +54,11 @@ const userSchema = new mongoose.Schema({
     soundEnabled: {
       type: Boolean,
       default: true
-    }
+    },
+    callNotifications: {
+    type: Boolean,
+    default: true,
+  },
   }
 }, { 
   timestamps: true 
