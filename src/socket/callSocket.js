@@ -8,8 +8,76 @@ module.exports = (io) => {
   const activeCalls = new Map();
   // Structure: roomId -> { callId, participants: Set(userId), startTime, callType, status }
 
+  async function sendActiveCallsToUser(socket) {
+    try {
+      console.log(`📞 Checking active calls for user ${socket.userId}`);
+
+      // Get all rooms the user is a member of
+      const userRooms = await Room.find({ members: socket.userId })
+        .select('_id name');
+
+      if (userRooms.length === 0) {
+        console.log(`   No rooms found for user ${socket.userId}`);
+        return;
+      }
+
+      console.log(`   User is in ${userRooms.length} rooms`);
+
+      // Check each room for active calls
+      for (const room of userRooms) {
+        const roomId = room._id.toString();
+        const activeCall = activeCalls.get(roomId);
+
+        // If there's an active call in this room
+        if (activeCall && 
+            (activeCall.status === 'ringing' || activeCall.status === 'ongoing')) {
+          
+          console.log(`   ✅ Found active call in room ${room.name}`);
+
+          try {
+            // Get call details from database
+            const call = await Call.findById(activeCall.callId)
+              .populate('initiator', 'name profilePhoto email');
+
+            if (call) {
+              // Get caller info
+              const caller = await User.findById(call.initiator._id || call.initiator)
+                .select('name profilePhoto email');
+
+              // Send incoming_call event to this specific user
+              socket.emit('incoming_call', {
+                callId: call._id,
+                roomId: roomId,
+                roomName: room.name,
+                callType: call.callType,
+                status: activeCall.status,
+                caller: {
+                  id: caller._id,
+                  name: caller.name,
+                  avatar: caller.profilePhoto || null,
+                  email: caller.email
+                },
+                participants: activeCall.participants.size,
+                timestamp: call.createdAt || new Date()
+              });
+
+              console.log(`   📤 Sent active call to user ${socket.userId}`);
+            }
+          } catch (err) {
+            console.error(`   ❌ Error fetching call details: ${err}`);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('❌ Error in sendActiveCallsToUser:', err);
+    }
+  }
+
+
   io.on("connection", (socket) => {
     console.log(`🔌 User ${socket.userId} connected for calls`);
+
+    sendActiveCallsToUser(socket);
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 📞 1. START CALL
