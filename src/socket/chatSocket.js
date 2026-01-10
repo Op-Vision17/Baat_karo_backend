@@ -3,10 +3,11 @@ const jwt = require("jsonwebtoken");
 const Message = require("../models/messageModel");
 const Room = require("../models/roomModel");
 const User = require("../models/userModel");
+const Call = require("../models/callModel");
 const mongoose = require("mongoose");
 const { sendMessageNotification } = require("../services/notificationService");
 
-module.exports = (io) => {
+module.exports = (io, activeCalls) => {
   const roomUsers = new Map(); // Track online users per room
   const typingUsers = new Map(); // Track typing users per room: roomId -> Set of userId
   const typingTimeouts = new Map(); // Auto-clear typing after timeout: userId-roomId -> timeout
@@ -67,6 +68,51 @@ module.exports = (io) => {
       io.to(roomId).emit("onlineUsers", Array.from(roomUsers.get(roomId)));
 
       console.log(`✅ User ${socket.userId} joined room ${roomId}`);
+
+      // ✅ CHECK FOR ACTIVE CALL IN THIS ROOM
+      try {
+        const activeCall = activeCalls.get(roomId);
+        
+        if (activeCall && 
+            (activeCall.status === 'ringing' || activeCall.status === 'ongoing')) {
+          
+          console.log(`📞 Active call found in room ${roomId}, notifying user ${socket.userId}`);
+
+          // Get call details from database
+          const call = await Call.findById(activeCall.callId)
+            .populate('initiator', 'name profilePhoto email');
+
+          if (call) {
+            // Get caller info
+            const caller = await User.findById(call.initiator._id || call.initiator)
+              .select('name profilePhoto email');
+
+            // Send incoming_call event to this specific user
+            socket.emit('incoming_call', {
+              callId: call._id.toString(),
+              roomId: roomId,
+              roomName: room.name,
+              callType: call.callType,
+              status: activeCall.status,
+              caller: {
+                id: caller._id.toString(),
+                name: caller.name,
+                avatar: caller.profilePhoto || null,
+                email: caller.email
+              },
+              participants: Array.from(activeCall.participants).map(uid => ({
+                id: uid
+              })),
+              startTime: call.createdAt || new Date(),
+              timestamp: new Date()
+            });
+
+            console.log(`   ✅ Sent active call notification to user ${socket.userId}`);
+          }
+        }
+      } catch (callError) {
+        console.error('❌ Error checking active call:', callError);
+      }
     });
 
     // ✅ TYPING INDICATOR - User started typing
@@ -211,7 +257,7 @@ module.exports = (io) => {
         io.to(roomId).emit("receiveMessage", payload);
         console.log("📡 Message broadcasted to room:", roomId);
 
-        // Push notifications code (keeping your existing code)
+        // Push notifications code
         try {
           const room = await Room.findById(roomId);
           const onlineUsers = roomUsers.get(roomId) || new Set();

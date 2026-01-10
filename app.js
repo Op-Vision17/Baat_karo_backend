@@ -26,8 +26,8 @@ app.use("/api/auth", require("./src/routes/authRoutes"));
 app.use("/api/room", require("./src/routes/roomRoutes"));
 app.use("/api/upload", require("./src/routes/uploadRoutes"));
 app.use("/api/notifications", require("./src/routes/notificationRoutes"));
-app.use("/api/agora", require("./src/routes/agoraRoutes")); // ✅ NEW
-app.use("/api/calls", require("./src/routes/callRoutes"));   // ✅ NEW
+app.use("/api/agora", require("./src/routes/agoraRoutes"));
+app.use("/api/calls", require("./src/routes/callRoutes"));
 
 const server = http.createServer(app);
 
@@ -41,14 +41,24 @@ const io = new Server(server, {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ✅ SHARED ACTIVE CALLS MAP
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// This Map is shared between chatSocket and callSocket
+// so both can access the same active calls data
+const activeCalls = new Map();
+console.log('✅ Shared activeCalls Map created');
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SOCKET HANDLERS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-require("./src/socket/chatSocket")(io);
-require("./src/socket/callSocket")(io); // ✅ NEW
+// Pass activeCalls to both handlers so they can share call state
+require("./src/socket/chatSocket")(io, activeCalls);  // ✅ PASS activeCalls
+require("./src/socket/callSocket")(io, activeCalls);  // ✅ PASS activeCalls
 
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
   console.log(`🚀 Baatkro backend running on port ${PORT}`);
   console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Active calls tracking enabled`);
 });
