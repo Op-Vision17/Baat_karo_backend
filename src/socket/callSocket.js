@@ -89,8 +89,11 @@ module.exports = (io) => {
   io.on("connection", (socket) => {
     console.log(`🔌 User ${socket.userId} connected for calls`);
 
-    // ✅ Send any active calls to this user
-    sendActiveCallsToUser(socket);
+    // ✅ Send any active calls to this user after a small delay
+    // (to ensure socket is fully ready)
+    setTimeout(() => {
+      sendActiveCallsToUser(socket);
+    }, 500);
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 📞 1. START CALL
