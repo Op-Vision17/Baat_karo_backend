@@ -8,8 +8,10 @@ module.exports = (io) => {
   const activeCalls = new Map();
   // Structure: roomId -> { callId, participants: Set(userId), startTime, callType, status }
 
+  // ✅ Send active calls to user when they connect
   async function sendActiveCallsToUser(socket) {
     try {
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       console.log(`📞 Checking active calls for user ${socket.userId}`);
 
       // Get all rooms the user is a member of
@@ -18,6 +20,7 @@ module.exports = (io) => {
 
       if (userRooms.length === 0) {
         console.log(`   No rooms found for user ${socket.userId}`);
+        console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
         return;
       }
 
@@ -32,7 +35,7 @@ module.exports = (io) => {
         if (activeCall && 
             (activeCall.status === 'ringing' || activeCall.status === 'ongoing')) {
           
-          console.log(`   ✅ Found active call in room ${room.name}`);
+          console.log(`   ✅ Found active ${activeCall.status} call in room ${room.name}`);
 
           try {
             // Get call details from database
@@ -44,39 +47,49 @@ module.exports = (io) => {
               const caller = await User.findById(call.initiator._id || call.initiator)
                 .select('name profilePhoto email');
 
-              // Send incoming_call event to this specific user
+              // ✅ Send incoming_call event to this specific user
               socket.emit('incoming_call', {
-                callId: call._id,
+                callId: call._id.toString(),
                 roomId: roomId,
                 roomName: room.name,
                 callType: call.callType,
                 status: activeCall.status,
                 caller: {
-                  id: caller._id,
+                  id: caller._id.toString(),
                   name: caller.name,
                   avatar: caller.profilePhoto || null,
                   email: caller.email
                 },
-                participants: activeCall.participants.size,
-                timestamp: call.createdAt || new Date()
+                participants: Array.from(activeCall.participants).map(uid => ({
+                  id: uid
+                })),
+                startTime: call.createdAt || new Date(),
+                timestamp: new Date()
               });
 
-              console.log(`   📤 Sent active call to user ${socket.userId}`);
+              console.log(`   📤 Sent active call event to user ${socket.userId}`);
+              console.log(`      Call ID: ${call._id}`);
+              console.log(`      Room: ${room.name}`);
+              console.log(`      Type: ${call.callType}`);
+              console.log(`      Status: ${activeCall.status}`);
+              console.log(`      Participants: ${activeCall.participants.size}`);
             }
           } catch (err) {
             console.error(`   ❌ Error fetching call details: ${err}`);
           }
         }
       }
+      
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     } catch (err) {
       console.error('❌ Error in sendActiveCallsToUser:', err);
     }
   }
 
-
   io.on("connection", (socket) => {
     console.log(`🔌 User ${socket.userId} connected for calls`);
 
+    // ✅ Send any active calls to this user
     sendActiveCallsToUser(socket);
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -143,23 +156,25 @@ module.exports = (io) => {
 
         // Notify all room members (except caller)
         socket.to(roomId).emit("incoming_call", {
-          callId: call._id,
+          callId: call._id.toString(),
           roomId,
           callType,
           caller: {
-            id: caller._id,
+            id: caller._id.toString(),
             name: caller.name,
             avatar: caller.profilePhoto || null,
             email: caller.email,
           },
           roomName: room.name,
+          status: 'ringing',
+          startTime: call.createdAt,
           timestamp: new Date(),
         });
 
         // Confirm to caller
         socket.emit("call_started", {
           success: true,
-          callId: call._id,
+          callId: call._id.toString(),
           roomId,
           callType,
         });
@@ -314,7 +329,7 @@ module.exports = (io) => {
         // Notify others in call
         socket.to(roomId).emit("user_joined_call", {
           user: {
-            id: user._id,
+            id: user._id.toString(),
             name: user.name,
             avatar: user.profilePhoto || null,
             email: user.email,
@@ -331,7 +346,7 @@ module.exports = (io) => {
 
         socket.emit("call_participants", {
           participants: participantUsers.map((u) => ({
-            id: u._id,
+            id: u._id.toString(),
             name: u.name,
             avatar: u.profilePhoto || null,
             email: u.email,
@@ -447,8 +462,9 @@ module.exports = (io) => {
 
         console.log(`✅ User ${user?.name || socket.userId} left. Remaining: ${activeCall.participants.size}`);
 
-        // If last person left, end call
+        // ✅ If last person left, end call immediately
         if (activeCall.participants.size === 0) {
+          console.log(`🏁 Last participant left, ending call ${callId}`);
           await endCall(roomId, callId, io);
         }
       } catch (err) {
@@ -539,12 +555,14 @@ module.exports = (io) => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   async function endCall(roomId, callId, io) {
     try {
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       console.log(`🏁 Ending call ${callId} in room ${roomId}`);
 
       // Remove from active calls
       const activeCall = activeCalls.get(roomId);
       if (activeCall) {
         activeCalls.delete(roomId);
+        console.log(`   ✅ Removed from activeCalls map`);
       }
 
       // Update database
@@ -586,6 +604,7 @@ module.exports = (io) => {
         }
 
         await call.save();
+        console.log(`   ✅ Database updated`);
 
         // Send missed call notifications
         if (call.missedBy.length > 0) {
@@ -616,23 +635,25 @@ module.exports = (io) => {
                   call.callType
                 );
 
-                console.log(`📵 Sent missed call notifications to ${fcmTokens.length} devices`);
+                console.log(`   📵 Sent missed call notifications to ${fcmTokens.length} devices`);
               }
             }
           } catch (notifError) {
-            console.error("❌ Missed call notification error:", notifError);
+            console.error("   ❌ Missed call notification error:", notifError);
           }
         }
       }
 
-      // Notify all participants
+      // ✅ Notify ALL participants in the room (including those who left)
       io.to(roomId).emit("call_ended", {
-        callId,
-        roomId,
+        callId: callId,
+        roomId: roomId,
         timestamp: new Date(),
       });
 
+      console.log(`   ✅ Emitted call_ended to room ${roomId}`);
       console.log(`✅ Call ${callId} ended successfully`);
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     } catch (err) {
       console.error("❌ End call error:", err);
     }
