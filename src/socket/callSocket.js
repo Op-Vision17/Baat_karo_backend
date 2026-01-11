@@ -1,12 +1,15 @@
+// backend/src/socket/callSocket.js - FIXED VERSION
 const Call = require("../models/callModel");
 const Room = require("../models/roomModel");
 const User = require("../models/userModel");
 const mongoose = require("mongoose");
 
-module.exports = (io) => {
-  // 🔥 In-memory tracking for active calls
-  const activeCalls = new Map();
-  // Structure: roomId -> { callId, participants: Set(userId), startTime, callType, status }
+// ✅ CRITICAL FIX: Accept activeCalls as parameter (shared with chatSocket)
+module.exports = (io, activeCalls) => {
+  // ❌ REMOVED: const activeCalls = new Map();
+  // ✅ Now uses the shared activeCalls Map passed from server.js
+
+  console.log('🔥 callSocket initialized with SHARED activeCalls Map');
 
   // ✅ Send active calls to user when they connect
   async function sendActiveCallsToUser(socket) {
@@ -25,6 +28,7 @@ module.exports = (io) => {
       }
 
       console.log(`   User is in ${userRooms.length} rooms`);
+      console.log(`   Active calls in system: ${activeCalls.size}`);
 
       // Check each room for active calls
       for (const room of userRooms) {
@@ -90,7 +94,6 @@ module.exports = (io) => {
     console.log(`🔌 User ${socket.userId} connected for calls`);
 
     // ✅ Send any active calls to this user after a small delay
-    // (to ensure socket is fully ready)
     setTimeout(() => {
       sendActiveCallsToUser(socket);
     }, 500);
@@ -123,6 +126,8 @@ module.exports = (io) => {
 
         // Check if call already active in this room
         if (activeCalls.has(roomId)) {
+          console.log(`⚠️ Call already in progress in room ${roomId}`);
+          console.log(`   Active calls: ${Array.from(activeCalls.keys())}`);
           socket.emit("call_error", { message: "Call already in progress" });
           return;
         }
@@ -142,7 +147,7 @@ module.exports = (io) => {
           ],
         });
 
-        // Add to active calls in memory
+        // Add to active calls in memory (SHARED Map)
         activeCalls.set(roomId, {
           callId: call._id.toString(),
           participants: new Set([socket.userId]),
@@ -150,6 +155,10 @@ module.exports = (io) => {
           callType,
           status: "ringing",
         });
+
+        console.log(`✅ Call added to shared activeCalls Map`);
+        console.log(`   Total active calls: ${activeCalls.size}`);
+        console.log(`   Active rooms: ${Array.from(activeCalls.keys())}`);
 
         // Join socket room for call
         socket.join(roomId);
@@ -468,7 +477,7 @@ module.exports = (io) => {
         // ✅ If last person left, end call immediately
         if (activeCall.participants.size === 0) {
           console.log(`🏁 Last participant left, ending call ${callId}`);
-          await endCall(roomId, callId, io);
+          await endCall(roomId, callId, io, activeCalls);
         }
       } catch (err) {
         console.error("❌ Leave call error:", err);
@@ -544,7 +553,7 @@ module.exports = (io) => {
 
               // End call if empty
               if (currentCall.participants.size === 0) {
-                await endCall(roomId, currentCall.callId, io);
+                await endCall(roomId, currentCall.callId, io, activeCalls);
               }
             }
           }, 10000); // 10 second grace period
@@ -556,7 +565,7 @@ module.exports = (io) => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🏁 HELPER: END CALL
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  async function endCall(roomId, callId, io) {
+  async function endCall(roomId, callId, io, activeCalls) {
     try {
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       console.log(`🏁 Ending call ${callId} in room ${roomId}`);
@@ -565,7 +574,8 @@ module.exports = (io) => {
       const activeCall = activeCalls.get(roomId);
       if (activeCall) {
         activeCalls.delete(roomId);
-        console.log(`   ✅ Removed from activeCalls map`);
+        console.log(`   ✅ Removed from shared activeCalls map`);
+        console.log(`   Remaining active calls: ${activeCalls.size}`);
       }
 
       // Update database
@@ -661,4 +671,7 @@ module.exports = (io) => {
       console.error("❌ End call error:", err);
     }
   }
+
+  // ✅ Export the endCall function so it can be used from disconnect handler
+  return { endCall };
 };
