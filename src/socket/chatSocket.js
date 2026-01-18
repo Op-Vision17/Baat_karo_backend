@@ -33,88 +33,138 @@ module.exports = (io, activeCalls) => {
     console.log("✅ User connected:", socket.userId);
 
     // Join room
-    socket.on("joinRoom", async (roomId) => {
-      if (!mongoose.Types.ObjectId.isValid(roomId)) {
-        socket.emit("error", { message: "Invalid room ID" });
-        return;
+    // Join room
+socket.on("joinRoom", async (roomId) => {
+  if (!mongoose.Types.ObjectId.isValid(roomId)) {
+    socket.emit("error", { message: "Invalid room ID" });
+    return;
+  }
+
+  const room = await Room.findById(roomId);
+  if (!room) {
+    socket.emit("error", { message: "Room not found" });
+    return;
+  }
+
+  if (!room.members.includes(socket.userId)) {
+    socket.emit("error", { message: "Access denied" });
+    return;
+  }
+
+  // ✅ CRITICAL FIX: Force leave current room first (even if same room)
+  if (socket.currentRoom) {
+    console.log(`🔄 User ${socket.userId} leaving previous room: ${socket.currentRoom}`);
+    
+    // Leave the Socket.IO room
+    socket.leave(socket.currentRoom);
+    
+    // Remove from online users of previous room
+    if (roomUsers.has(socket.currentRoom)) {
+      roomUsers.get(socket.currentRoom).delete(socket.userId);
+      
+      // Notify others in previous room
+      io.to(socket.currentRoom).emit(
+        "onlineUsers",
+        Array.from(roomUsers.get(socket.currentRoom))
+      );
+      
+      // Clean up empty room
+      if (roomUsers.get(socket.currentRoom).size === 0) {
+        roomUsers.delete(socket.currentRoom);
+        console.log(`🧹 Cleaned up empty room: ${socket.currentRoom}`);
       }
-
-      const room = await Room.findById(roomId);
-      if (!room) {
-        socket.emit("error", { message: "Room not found" });
-        return;
+    }
+    
+    // Clear typing indicator for previous room
+    const prevRoomTypingUsers = typingUsers.get(socket.currentRoom);
+    if (prevRoomTypingUsers) {
+      prevRoomTypingUsers.delete(socket.userId);
+      
+      const typingKey = `${socket.userId}-${socket.currentRoom}`;
+      if (typingTimeouts.has(typingKey)) {
+        clearTimeout(typingTimeouts.get(typingKey));
+        typingTimeouts.delete(typingKey);
       }
-
-      if (!room.members.includes(socket.userId)) {
-        socket.emit("error", { message: "Access denied" });
-        return;
+      
+      // Notify others in previous room
+      io.to(socket.currentRoom).emit("typingUpdate", {
+        typingUsers: Array.from(prevRoomTypingUsers.values())
+      });
+      
+      // Clean up empty typing map
+      if (prevRoomTypingUsers.size === 0) {
+        typingUsers.delete(socket.currentRoom);
       }
+    }
+    
+    console.log(`✅ User ${socket.userId} left previous room: ${socket.currentRoom}`);
+  }
 
-      socket.join(roomId);
-      socket.currentRoom = roomId;
+  // ✅ NOW join the new room (fresh join even if same room)
+  socket.join(roomId);
+  socket.currentRoom = roomId;
 
-      // Track online users
-      if (!roomUsers.has(roomId)) {
-        roomUsers.set(roomId, new Set());
+  // Track online users
+  if (!roomUsers.has(roomId)) {
+    roomUsers.set(roomId, new Set());
+  }
+  roomUsers.get(roomId).add(socket.userId);
+
+  // Initialize typing users set for this room
+  if (!typingUsers.has(roomId)) {
+    typingUsers.set(roomId, new Map()); // Map of userId -> user info
+  }
+
+  // Emit updated online users list
+  io.to(roomId).emit("onlineUsers", Array.from(roomUsers.get(roomId)));
+
+  console.log(`✅ User ${socket.userId} joined room ${roomId}`);
+
+  // ✅ CHECK FOR ACTIVE CALL IN THIS ROOM
+  try {
+    const activeCall = activeCalls.get(roomId);
+    
+    if (activeCall && 
+        (activeCall.status === 'ringing' || activeCall.status === 'ongoing')) {
+      
+      console.log(`📞 Active call found in room ${roomId}, notifying user ${socket.userId}`);
+
+      // Get call details from database
+      const call = await Call.findById(activeCall.callId)
+        .populate('initiator', 'name profilePhoto email');
+
+      if (call) {
+        // Get caller info
+        const caller = await User.findById(call.initiator._id || call.initiator)
+          .select('name profilePhoto email');
+
+        // Send incoming_call event to this specific user
+        socket.emit('incoming_call', {
+          callId: call._id.toString(),
+          roomId: roomId,
+          roomName: room.name,
+          callType: call.callType,
+          status: activeCall.status,
+          caller: {
+            id: caller._id.toString(),
+            name: caller.name,
+            avatar: caller.profilePhoto || null,
+            email: caller.email
+          },
+          participants: Array.from(activeCall.participants).map(uid => ({
+            id: uid
+          })),
+          startTime: call.createdAt || new Date(),
+          timestamp: new Date()
+        });
+
+        console.log(`   ✅ Sent active call notification to user ${socket.userId}`);
       }
-      roomUsers.get(roomId).add(socket.userId);
-
-      // Initialize typing users set for this room
-      if (!typingUsers.has(roomId)) {
-        typingUsers.set(roomId, new Map()); // Map of userId -> user info
-      }
-
-      // Emit updated online users list
-      io.to(roomId).emit("onlineUsers", Array.from(roomUsers.get(roomId)));
-
-      console.log(`✅ User ${socket.userId} joined room ${roomId}`);
-
-      // ✅ CHECK FOR ACTIVE CALL IN THIS ROOM
-      try {
-        const activeCall = activeCalls.get(roomId);
-        
-        if (activeCall && 
-            (activeCall.status === 'ringing' || activeCall.status === 'ongoing')) {
-          
-          console.log(`📞 Active call found in room ${roomId}, notifying user ${socket.userId}`);
-
-          // Get call details from database
-          const call = await Call.findById(activeCall.callId)
-            .populate('initiator', 'name profilePhoto email');
-
-          if (call) {
-            // Get caller info
-            const caller = await User.findById(call.initiator._id || call.initiator)
-              .select('name profilePhoto email');
-
-            // Send incoming_call event to this specific user
-            socket.emit('incoming_call', {
-              callId: call._id.toString(),
-              roomId: roomId,
-              roomName: room.name,
-              callType: call.callType,
-              status: activeCall.status,
-              caller: {
-                id: caller._id.toString(),
-                name: caller.name,
-                avatar: caller.profilePhoto || null,
-                email: caller.email
-              },
-              participants: Array.from(activeCall.participants).map(uid => ({
-                id: uid
-              })),
-              startTime: call.createdAt || new Date(),
-              timestamp: new Date()
-            });
-
-            console.log(`   ✅ Sent active call notification to user ${socket.userId}`);
-          }
-        }
-      } catch (callError) {
-        console.error('❌ Error checking active call:', callError);
-      }
-    });
-
+    }
+  } catch (callError) {
+    console.error('❌ Error checking active call:', callError);
+  }
+});
     // ✅ TYPING INDICATOR - User started typing
     socket.on("typing", async ({ roomId, isTyping }) => {
       try {
