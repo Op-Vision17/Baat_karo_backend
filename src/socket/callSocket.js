@@ -1,14 +1,11 @@
-// backend/src/socket/callSocket.js - FIXED VERSION
+// backend/src/socket/callSocket.js - WITH CALL MESSAGES
 const Call = require("../models/callModel");
 const Room = require("../models/roomModel");
 const User = require("../models/userModel");
+const Message = require("../models/messageModel"); // ✅ ADDED
 const mongoose = require("mongoose");
 
-// ✅ CRITICAL FIX: Accept activeCalls as parameter (shared with chatSocket)
 module.exports = (io, activeCalls) => {
-  // ❌ REMOVED: const activeCalls = new Map();
-  // ✅ Now uses the shared activeCalls Map passed from server.js
-
   console.log('🔥 callSocket initialized with SHARED activeCalls Map');
 
   // ✅ Send active calls to user when they connect
@@ -17,7 +14,6 @@ module.exports = (io, activeCalls) => {
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       console.log(`📞 Checking active calls for user ${socket.userId}`);
 
-      // Get all rooms the user is a member of
       const userRooms = await Room.find({ members: socket.userId })
         .select('_id name');
 
@@ -30,28 +26,23 @@ module.exports = (io, activeCalls) => {
       console.log(`   User is in ${userRooms.length} rooms`);
       console.log(`   Active calls in system: ${activeCalls.size}`);
 
-      // Check each room for active calls
       for (const room of userRooms) {
         const roomId = room._id.toString();
         const activeCall = activeCalls.get(roomId);
 
-        // If there's an active call in this room
         if (activeCall && 
             (activeCall.status === 'ringing' || activeCall.status === 'ongoing')) {
           
           console.log(`   ✅ Found active ${activeCall.status} call in room ${room.name}`);
 
           try {
-            // Get call details from database
             const call = await Call.findById(activeCall.callId)
               .populate('initiator', 'name profilePhoto email');
 
             if (call) {
-              // Get caller info
               const caller = await User.findById(call.initiator._id || call.initiator)
                 .select('name profilePhoto email');
 
-              // ✅ Send incoming_call event to this specific user
               socket.emit('incoming_call', {
                 callId: call._id.toString(),
                 roomId: roomId,
@@ -72,11 +63,6 @@ module.exports = (io, activeCalls) => {
               });
 
               console.log(`   📤 Sent active call event to user ${socket.userId}`);
-              console.log(`      Call ID: ${call._id}`);
-              console.log(`      Room: ${room.name}`);
-              console.log(`      Type: ${call.callType}`);
-              console.log(`      Status: ${activeCall.status}`);
-              console.log(`      Participants: ${activeCall.participants.size}`);
             }
           } catch (err) {
             console.error(`   ❌ Error fetching call details: ${err}`);
@@ -93,7 +79,6 @@ module.exports = (io, activeCalls) => {
   io.on("connection", (socket) => {
     console.log(`🔌 User ${socket.userId} connected for calls`);
 
-    // ✅ Send any active calls to this user after a small delay
     setTimeout(() => {
       sendActiveCallsToUser(socket);
     }, 500);
@@ -105,13 +90,11 @@ module.exports = (io, activeCalls) => {
       try {
         console.log(`📞 User ${socket.userId} starting ${callType} call in room ${roomId}`);
 
-        // Validate room ID
         if (!mongoose.Types.ObjectId.isValid(roomId)) {
           socket.emit("call_error", { message: "Invalid room ID" });
           return;
         }
 
-        // Check if room exists and user is member
         const room = await Room.findById(roomId).populate("members", "name profilePhoto email");
         if (!room) {
           socket.emit("call_error", { message: "Room not found" });
@@ -124,10 +107,8 @@ module.exports = (io, activeCalls) => {
           return;
         }
 
-        // Check if call already active in this room
         if (activeCalls.has(roomId)) {
           console.log(`⚠️ Call already in progress in room ${roomId}`);
-          console.log(`   Active calls: ${Array.from(activeCalls.keys())}`);
           socket.emit("call_error", { message: "Call already in progress" });
           return;
         }
@@ -158,13 +139,48 @@ module.exports = (io, activeCalls) => {
 
         console.log(`✅ Call added to shared activeCalls Map`);
         console.log(`   Total active calls: ${activeCalls.size}`);
-        console.log(`   Active rooms: ${Array.from(activeCalls.keys())}`);
 
-        // Join socket room for call
         socket.join(roomId);
 
-        // Get caller info
         const caller = await User.findById(socket.userId).select("name profilePhoto email");
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // ✅ CREATE CALL MESSAGE IN CHAT
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        try {
+          const callMessage = await Message.createCallMessage(
+            roomId,
+            call._id,
+            callType,
+            socket.userId,
+            caller.name,
+            "started"
+          );
+
+          // Populate sender for broadcast
+          const populatedMessage = await Message.findById(callMessage._id)
+            .populate("sender", "name email profilePhoto");
+
+          // Broadcast call message to room
+          io.to(roomId).emit("receiveMessage", {
+            _id: populatedMessage._id,
+            roomId: populatedMessage.roomId,
+            sender: {
+              _id: populatedMessage.sender._id,
+              name: populatedMessage.sender.name,
+              email: populatedMessage.sender.email,
+              profilePhoto: populatedMessage.sender.profilePhoto || null
+            },
+            messageType: populatedMessage.messageType,
+            callData: populatedMessage.callData,
+            isDeleted: populatedMessage.isDeleted,
+            createdAt: populatedMessage.createdAt
+          });
+
+          console.log(`💬 Call message created and broadcasted`);
+        } catch (msgError) {
+          console.error("❌ Error creating call message:", msgError);
+        }
 
         // Notify all room members (except caller)
         socket.to(roomId).emit("incoming_call", {
@@ -183,7 +199,6 @@ module.exports = (io, activeCalls) => {
           timestamp: new Date(),
         });
 
-        // Confirm to caller
         socket.emit("call_started", {
           success: true,
           callId: call._id.toString(),
@@ -199,13 +214,11 @@ module.exports = (io, activeCalls) => {
         try {
           const { sendCallNotification } = require("../services/notificationService");
 
-          // Get all members except caller
           const otherMembers = room.members.filter(
             (m) => m._id.toString() !== socket.userId
           );
 
           if (otherMembers.length > 0) {
-            // Get users with notifications enabled
             const memberIds = otherMembers.map((m) => m._id);
             const usersWithTokens = await User.find({
               _id: { $in: memberIds },
@@ -241,7 +254,6 @@ module.exports = (io, activeCalls) => {
                 if (result.success) {
                   console.log(`✅ Sent ${result.successCount || 1} call notification(s)`);
 
-                  // Clean up invalid tokens
                   if (result.invalidTokens && result.invalidTokens.length > 0) {
                     console.log(`🧹 Cleaning up ${result.invalidTokens.length} invalid tokens`);
 
@@ -266,16 +278,11 @@ module.exports = (io, activeCalls) => {
                 } else {
                   console.error("❌ Failed to send call notifications:", result.error);
                 }
-              } else {
-                console.log("ℹ️ No FCM tokens found for members");
               }
-            } else {
-              console.log("ℹ️ No members with call notifications enabled");
             }
           }
         } catch (notifError) {
           console.error("❌ Call notification error:", notifError);
-          // Don't fail the call if notification fails
         }
       } catch (err) {
         console.error("❌ Start call error:", err);
@@ -299,18 +306,47 @@ module.exports = (io, activeCalls) => {
           return;
         }
 
-        // Add user to participants in memory
         activeCall.participants.add(socket.userId);
 
-        // Update status to ongoing if it was ringing
         if (activeCall.status === "ringing") {
           activeCall.status = "ongoing";
+          
+          // ✅ UPDATE CALL MESSAGE TO "ONGOING"
+          try {
+            const updatedMessage = await Message.updateCallMessage(callId, {
+              status: "ongoing",
+              participantCount: activeCall.participants.size,
+              wasAnswered: true
+            });
+
+            if (updatedMessage) {
+              const populatedMessage = await Message.findById(updatedMessage._id)
+                .populate("sender", "name email profilePhoto");
+
+              io.to(roomId).emit("messageUpdated", {
+                _id: populatedMessage._id,
+                roomId: populatedMessage.roomId,
+                sender: {
+                  _id: populatedMessage.sender._id,
+                  name: populatedMessage.sender.name,
+                  email: populatedMessage.sender.email,
+                  profilePhoto: populatedMessage.sender.profilePhoto || null
+                },
+                messageType: populatedMessage.messageType,
+                callData: populatedMessage.callData,
+                isDeleted: populatedMessage.isDeleted,
+                createdAt: populatedMessage.createdAt
+              });
+
+              console.log(`💬 Call message updated to ongoing`);
+            }
+          } catch (msgError) {
+            console.error("❌ Error updating call message:", msgError);
+          }
         }
 
-        // Update database
         const call = await Call.findById(callId);
         if (call) {
-          // Check if user already in participants
           const existingParticipant = call.participants.find(
             (p) => p.user.toString() === socket.userId
           );
@@ -322,7 +358,6 @@ module.exports = (io, activeCalls) => {
               callStatus: "joined",
             });
           } else {
-            // Rejoin case (if user left and came back)
             existingParticipant.callStatus = "joined";
             existingParticipant.leftAt = null;
           }
@@ -332,13 +367,10 @@ module.exports = (io, activeCalls) => {
           await call.save();
         }
 
-        // Join socket room
         socket.join(roomId);
 
-        // Get user info
         const user = await User.findById(socket.userId).select("name profilePhoto email");
 
-        // Notify others in call
         socket.to(roomId).emit("user_joined_call", {
           user: {
             id: user._id.toString(),
@@ -350,7 +382,6 @@ module.exports = (io, activeCalls) => {
           callId: activeCall.callId,
         });
 
-        // Send current participants to new joiner
         const participantIds = Array.from(activeCall.participants);
         const participantUsers = await User.find({
           _id: { $in: participantIds },
@@ -383,15 +414,12 @@ module.exports = (io, activeCalls) => {
       try {
         console.log(`❌ User ${socket.userId} rejected call ${callId} in room ${roomId}`);
 
-        // Update database
         const call = await Call.findById(callId);
         if (call) {
-          // Add to rejectedBy array
           if (!call.rejectedBy.includes(socket.userId)) {
             call.rejectedBy.push(socket.userId);
           }
 
-          // Update or add participant status
           const participant = call.participants.find(
             (p) => p.user.toString() === socket.userId
           );
@@ -409,7 +437,6 @@ module.exports = (io, activeCalls) => {
           await call.save();
         }
 
-        // Notify others (caller mainly)
         const user = await User.findById(socket.userId).select("name");
         socket.to(roomId).emit("call_rejected", {
           user: {
@@ -438,10 +465,8 @@ module.exports = (io, activeCalls) => {
           return;
         }
 
-        // Remove from participants in memory
         activeCall.participants.delete(socket.userId);
 
-        // Update database
         const call = await Call.findById(callId);
         if (call) {
           const participant = call.participants.find(
@@ -456,13 +481,10 @@ module.exports = (io, activeCalls) => {
           await call.save();
         }
 
-        // Leave socket room
         socket.leave(roomId);
 
-        // Get user info
         const user = await User.findById(socket.userId).select("name");
 
-        // Notify others
         socket.to(roomId).emit("user_left_call", {
           user: {
             id: socket.userId,
@@ -474,7 +496,6 @@ module.exports = (io, activeCalls) => {
 
         console.log(`✅ User ${user?.name || socket.userId} left. Remaining: ${activeCall.participants.size}`);
 
-        // ✅ If last person left, end call immediately
         if (activeCall.participants.size === 0) {
           console.log(`🏁 Last participant left, ending call ${callId}`);
           await endCall(roomId, callId, io, activeCalls);
@@ -512,21 +533,17 @@ module.exports = (io, activeCalls) => {
     socket.on("disconnect", async () => {
       console.log(`🔌 User ${socket.userId} disconnected`);
 
-      // Check if user was in any call
       for (const [roomId, activeCall] of activeCalls.entries()) {
         if (activeCall.participants.has(socket.userId)) {
           console.log(`⚠️ User ${socket.userId} disconnected from active call in ${roomId}`);
 
-          // Wait 10 seconds before auto-removing (reconnection grace period)
           setTimeout(async () => {
-            // Double-check if still disconnected and call still active
             const currentCall = activeCalls.get(roomId);
             if (currentCall && currentCall.participants.has(socket.userId)) {
               console.log(`🚪 Auto-removing ${socket.userId} from call after disconnect timeout`);
 
               currentCall.participants.delete(socket.userId);
 
-              // Update database
               const call = await Call.findById(currentCall.callId);
               if (call) {
                 const participant = call.participants.find(
@@ -539,7 +556,6 @@ module.exports = (io, activeCalls) => {
                 }
               }
 
-              // Notify others
               const user = await User.findById(socket.userId).select("name");
               io.to(roomId).emit("user_left_call", {
                 user: {
@@ -551,12 +567,11 @@ module.exports = (io, activeCalls) => {
                 reason: "disconnect",
               });
 
-              // End call if empty
               if (currentCall.participants.size === 0) {
                 await endCall(roomId, currentCall.callId, io, activeCalls);
               }
             }
-          }, 10000); // 10 second grace period
+          }, 10000);
         }
       }
     });
@@ -570,7 +585,6 @@ module.exports = (io, activeCalls) => {
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       console.log(`🏁 Ending call ${callId} in room ${roomId}`);
 
-      // Remove from active calls
       const activeCall = activeCalls.get(roomId);
       if (activeCall) {
         activeCalls.delete(roomId);
@@ -578,13 +592,11 @@ module.exports = (io, activeCalls) => {
         console.log(`   Remaining active calls: ${activeCalls.size}`);
       }
 
-      // Update database
       const call = await Call.findById(callId);
       if (call) {
         call.status = "ended";
         call.endTime = new Date();
 
-        // Mark users who never joined as "missed"
         const room = await Room.findById(roomId);
         if (room) {
           const joinedUserIds = call.participants
@@ -602,7 +614,6 @@ module.exports = (io, activeCalls) => {
 
           call.missedBy = missedUserIds;
 
-          // Add missed participants to participants array
           missedUserIds.forEach((userId) => {
             const existingParticipant = call.participants.find(
               (p) => p.user.toString() === userId
@@ -619,7 +630,41 @@ module.exports = (io, activeCalls) => {
         await call.save();
         console.log(`   ✅ Database updated`);
 
-        // Send missed call notifications
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // ✅ UPDATE CALL MESSAGE TO "ENDED"
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        try {
+          const updatedMessage = await Message.updateCallMessage(callId, {
+            status: call.wasAnswered ? "ended" : "missed",
+            endTime: call.endTime,
+            wasAnswered: call.wasAnswered
+          });
+
+          if (updatedMessage) {
+            const populatedMessage = await Message.findById(updatedMessage._id)
+              .populate("sender", "name email profilePhoto");
+
+            io.to(roomId).emit("messageUpdated", {
+              _id: populatedMessage._id,
+              roomId: populatedMessage.roomId,
+              sender: {
+                _id: populatedMessage.sender._id,
+                name: populatedMessage.sender.name,
+                email: populatedMessage.sender.email,
+                profilePhoto: populatedMessage.sender.profilePhoto || null
+              },
+              messageType: populatedMessage.messageType,
+              callData: populatedMessage.callData,
+              isDeleted: populatedMessage.isDeleted,
+              createdAt: populatedMessage.createdAt
+            });
+
+            console.log(`💬 Call message updated to ${call.wasAnswered ? 'ended' : 'missed'}`);
+          }
+        } catch (msgError) {
+          console.error("❌ Error updating call message:", msgError);
+        }
+
         if (call.missedBy.length > 0) {
           try {
             const { sendMissedCallNotification } = require("../services/notificationService");
@@ -657,7 +702,6 @@ module.exports = (io, activeCalls) => {
         }
       }
 
-      // ✅ Notify ALL participants in the room (including those who left)
       io.to(roomId).emit("call_ended", {
         callId: callId,
         roomId: roomId,
@@ -672,6 +716,5 @@ module.exports = (io, activeCalls) => {
     }
   }
 
-  // ✅ Export the endCall function so it can be used from disconnect handler
   return { endCall };
 };
