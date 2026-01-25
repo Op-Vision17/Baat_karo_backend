@@ -39,7 +39,7 @@ module.exports = (io, activeCalls) => {
             const call = await Call.findById(activeCall.callId)
               .populate('initiator', 'name profilePhoto email');
 
-            if (call) {
+          if (call) {
   const caller = await User.findById(call.initiator._id || call.initiator)
     .select('name profilePhoto email');
 
@@ -68,7 +68,7 @@ module.exports = (io, activeCalls) => {
       avatar: caller.profilePhoto || null,
       email: caller.email
     },
-    participants: participantsData,  // ✅ FIXED: Full data
+    participants: participantsData,  // ✅ FIXED
     startTime: call.createdAt || new Date(),
     timestamp: new Date()
   });

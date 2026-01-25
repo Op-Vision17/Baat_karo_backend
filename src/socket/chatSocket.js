@@ -121,7 +121,8 @@ socket.on("joinRoom", async (roomId) => {
   console.log(`✅ User ${socket.userId} joined room ${roomId}`);
 
   // ✅ CHECK FOR ACTIVE CALL IN THIS ROOM
-  try {
+// ✅ CHECK FOR ACTIVE CALL IN THIS ROOM
+try {
   const activeCall = activeCalls.get(roomId);
   
   if (activeCall && 
@@ -129,12 +130,10 @@ socket.on("joinRoom", async (roomId) => {
     
     console.log(`📞 Active call found in room ${roomId}, notifying user ${socket.userId}`);
 
-    // Get call details from database
     const call = await Call.findById(activeCall.callId)
       .populate('initiator', 'name profilePhoto email');
 
     if (call) {
-      // Get caller info
       const caller = await User.findById(call.initiator._id || call.initiator)
         .select('name profilePhoto email');
 
@@ -151,7 +150,6 @@ socket.on("joinRoom", async (roomId) => {
         email: user.email
       }));
 
-      // Send incoming_call event to this specific user
       socket.emit('incoming_call', {
         callId: call._id.toString(),
         roomId: roomId,
@@ -164,7 +162,7 @@ socket.on("joinRoom", async (roomId) => {
           avatar: caller.profilePhoto || null,
           email: caller.email
         },
-        participants: participantsData,  // ✅ FIXED: Full data
+        participants: participantsData,  // ✅ FIXED
         startTime: call.createdAt || new Date(),
         timestamp: new Date()
       });
