@@ -149,13 +149,13 @@ module.exports = (io, activeCalls) => {
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         try {
           const callMessage = await Message.createCallMessage(
-            roomId,
-            call._id,
-            callType,
-            socket.userId,
-            caller.name,
-            "started"
-          );
+  roomId,
+  call._id,
+  callType,
+  socket.userId,
+  caller.name,
+  "ongoing"  // ✅ FIX #1
+);
 
           // Populate sender for broadcast
           const populatedMessage = await Message.findById(callMessage._id)
@@ -323,23 +323,24 @@ module.exports = (io, activeCalls) => {
               const populatedMessage = await Message.findById(updatedMessage._id)
                 .populate("sender", "name email profilePhoto");
 
-              io.to(roomId).emit("messageUpdated", {
-                _id: populatedMessage._id,
-                roomId: populatedMessage.roomId,
-                sender: {
-                  _id: populatedMessage.sender._id,
-                  name: populatedMessage.sender.name,
-                  email: populatedMessage.sender.email,
-                  profilePhoto: populatedMessage.sender.profilePhoto || null
-                },
-                messageType: populatedMessage.messageType,
-                callData: populatedMessage.callData,
-                isDeleted: populatedMessage.isDeleted,
-                createdAt: populatedMessage.createdAt
-              });
+                  io.to(roomId).emit("messageUpdated", {
+      _id: populatedMessage._id,
+      roomId: populatedMessage.roomId,
+      sender: {
+        _id: populatedMessage.sender._id,
+        name: populatedMessage.sender.name,
+        email: populatedMessage.sender.email,
+        profilePhoto: populatedMessage.sender.profilePhoto || null
+      },
+      messageType: populatedMessage.messageType,
+      callData: populatedMessage.callData,
+      isDeleted: populatedMessage.isDeleted,
+      createdAt: populatedMessage.createdAt
+    });
 
-              console.log(`💬 Call message updated to ongoing`);
-            }
+    console.log(`💬 Call message updated to ongoing`);
+  }
+
           } catch (msgError) {
             console.error("❌ Error updating call message:", msgError);
           }
@@ -645,22 +646,22 @@ module.exports = (io, activeCalls) => {
               .populate("sender", "name email profilePhoto");
 
             io.to(roomId).emit("messageUpdated", {
-              _id: populatedMessage._id,
-              roomId: populatedMessage.roomId,
-              sender: {
-                _id: populatedMessage.sender._id,
-                name: populatedMessage.sender.name,
-                email: populatedMessage.sender.email,
-                profilePhoto: populatedMessage.sender.profilePhoto || null
-              },
-              messageType: populatedMessage.messageType,
-              callData: populatedMessage.callData,
-              isDeleted: populatedMessage.isDeleted,
-              createdAt: populatedMessage.createdAt
-            });
+      _id: populatedMessage._id,
+      roomId: populatedMessage.roomId,
+      sender: {
+        _id: populatedMessage.sender._id,
+        name: populatedMessage.sender.name,
+        email: populatedMessage.sender.email,
+        profilePhoto: populatedMessage.sender.profilePhoto || null
+      },
+      messageType: populatedMessage.messageType,
+      callData: populatedMessage.callData,
+      isDeleted: populatedMessage.isDeleted,
+      createdAt: populatedMessage.createdAt
+    });
 
-            console.log(`💬 Call message updated to ${call.wasAnswered ? 'ended' : 'missed'}`);
-          }
+    console.log(`💬 Call message updated to ${call.wasAnswered ? 'ended' : 'missed'}`);
+  }
         } catch (msgError) {
           console.error("❌ Error updating call message:", msgError);
         }
