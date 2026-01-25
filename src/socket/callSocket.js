@@ -467,55 +467,60 @@ module.exports = (io, activeCalls) => {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 🚪 4. LEAVE CALL
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    socket.on("leave_call", async ({ roomId, callId }) => {
-      try {
-        console.log(`🚪 User ${socket.userId} leaving call ${callId} in room ${roomId}`);
+   socket.on("leave_call", async ({ roomId, callId }) => {
+  try {
+    console.log(`🚪 User ${socket.userId} leaving call ${callId} in room ${roomId}`);
 
-        const activeCall = activeCalls.get(roomId);
-        if (!activeCall) {
-          console.log("⚠️ Call not found in active calls");
-          return;
-        }
+    const activeCall = activeCalls.get(roomId);
+    if (!activeCall) {
+      console.log("⚠️ Call not found in active calls");
+      return;
+    }
 
-        activeCall.participants.delete(socket.userId);
+    activeCall.participants.delete(socket.userId);
 
-        const call = await Call.findById(callId);
-        if (call) {
-          const participant = call.participants.find(
-            (p) => p.user.toString() === socket.userId
-          );
+    const call = await Call.findById(callId);
+    if (call) {
+      const participant = call.participants.find(
+        (p) => p.user.toString() === socket.userId
+      );
 
-          if (participant) {
-            participant.leftAt = new Date();
-            participant.callStatus = "left";
-          }
-
-          await call.save();
-        }
-
-        socket.leave(roomId);
-
-        const user = await User.findById(socket.userId).select("name");
-
-        socket.to(roomId).emit("user_left_call", {
-          user: {
-            id: socket.userId,
-            name: user ? user.name : "Unknown",
-          },
-          totalParticipants: activeCall.participants.size,
-          callId: activeCall.callId,
-        });
-
-        console.log(`✅ User ${user?.name || socket.userId} left. Remaining: ${activeCall.participants.size}`);
-
-        if (activeCall.participants.size === 0) {
-          console.log(`🏁 Last participant left, ending call ${callId}`);
-          await endCall(roomId, callId, io, activeCalls);
-        }
-      } catch (err) {
-        console.error("❌ Leave call error:", err);
+      if (participant) {
+        participant.leftAt = new Date();
+        participant.callStatus = "left";
       }
+
+      await call.save();
+    }
+
+    socket.leave(roomId);
+
+    const user = await User.findById(socket.userId).select("name");
+
+    socket.to(roomId).emit("user_left_call", {
+      user: {
+        id: socket.userId,
+        name: user ? user.name : "Unknown",
+      },
+      totalParticipants: activeCall.participants.size,
+      callId: activeCall.callId,
     });
+
+    console.log(`✅ User ${user?.name || socket.userId} left. Remaining: ${activeCall.participants.size}`);
+
+    // ✅ FIX: Remove from activeCalls IMMEDIATELY if empty
+    if (activeCall.participants.size === 0) {
+      console.log(`🏁 Last participant left, removing from activeCalls IMMEDIATELY`);
+      activeCalls.delete(roomId);  // ✅ CRITICAL: Remove NOW
+      console.log(`   ✅ Removed from activeCalls. Remaining: ${activeCalls.size}`);
+      
+      // Then do the full cleanup
+      await endCall(roomId, callId, io, activeCalls);
+    }
+  } catch (err) {
+    console.error("❌ Leave call error:", err);
+  }
+});
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 🔇 5. TOGGLE AUDIO
@@ -593,16 +598,19 @@ module.exports = (io, activeCalls) => {
   // 🏁 HELPER: END CALL
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   async function endCall(roomId, callId, io, activeCalls) {
-    try {
-      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-      console.log(`🏁 Ending call ${callId} in room ${roomId}`);
+  try {
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`🏁 Ending call ${callId} in room ${roomId}`);
 
-      const activeCall = activeCalls.get(roomId);
-      if (activeCall) {
-        activeCalls.delete(roomId);
-        console.log(`   ✅ Removed from shared activeCalls map`);
-        console.log(`   Remaining active calls: ${activeCalls.size}`);
-      }
+    // ✅ FIX: Check if already deleted (might have been removed in leave_call)
+    const activeCall = activeCalls.get(roomId);
+    if (activeCall) {
+      activeCalls.delete(roomId);
+      console.log(`   ✅ Removed from shared activeCalls map`);
+      console.log(`   Remaining active calls: ${activeCalls.size}`);
+    } else {
+      console.log(`   ℹ️ Already removed from activeCalls`);
+    }
 
       const call = await Call.findById(callId);
       if (call) {
