@@ -40,30 +40,41 @@ module.exports = (io, activeCalls) => {
               .populate('initiator', 'name profilePhoto email');
 
             if (call) {
-              const caller = await User.findById(call.initiator._id || call.initiator)
-                .select('name profilePhoto email');
+  const caller = await User.findById(call.initiator._id || call.initiator)
+    .select('name profilePhoto email');
 
-              socket.emit('incoming_call', {
-                callId: call._id.toString(),
-                roomId: roomId,
-                roomName: room.name,
-                callType: call.callType,
-                status: activeCall.status,
-                caller: {
-                  id: caller._id.toString(),
-                  name: caller.name,
-                  avatar: caller.profilePhoto || null,
-                  email: caller.email
-                },
-                participants: Array.from(activeCall.participants).map(uid => ({
-                  id: uid
-                })),
-                startTime: call.createdAt || new Date(),
-                timestamp: new Date()
-              });
+  // ✅ FIX: Fetch full participant data
+  const participantIds = Array.from(activeCall.participants);
+  const participantUsers = await User.find({
+    _id: { $in: participantIds }
+  }).select('name profilePhoto email');
 
-              console.log(`   📤 Sent active call event to user ${socket.userId}`);
-            }
+  const participantsData = participantUsers.map(user => ({
+    id: user._id.toString(),
+    name: user.name,
+    avatar: user.profilePhoto || null,
+    email: user.email
+  }));
+
+  socket.emit('incoming_call', {
+    callId: call._id.toString(),
+    roomId: roomId,
+    roomName: room.name,
+    callType: call.callType,
+    status: activeCall.status,
+    caller: {
+      id: caller._id.toString(),
+      name: caller.name,
+      avatar: caller.profilePhoto || null,
+      email: caller.email
+    },
+    participants: participantsData,  // ✅ FIXED: Full data
+    startTime: call.createdAt || new Date(),
+    timestamp: new Date()
+  });
+
+  console.log(`   📤 Sent active call event to user ${socket.userId}`);
+}
           } catch (err) {
             console.error(`   ❌ Error fetching call details: ${err}`);
           }

@@ -122,48 +122,59 @@ socket.on("joinRoom", async (roomId) => {
 
   // ✅ CHECK FOR ACTIVE CALL IN THIS ROOM
   try {
-    const activeCall = activeCalls.get(roomId);
+  const activeCall = activeCalls.get(roomId);
+  
+  if (activeCall && 
+      (activeCall.status === 'ringing' || activeCall.status === 'ongoing')) {
     
-    if (activeCall && 
-        (activeCall.status === 'ringing' || activeCall.status === 'ongoing')) {
-      
-      console.log(`📞 Active call found in room ${roomId}, notifying user ${socket.userId}`);
+    console.log(`📞 Active call found in room ${roomId}, notifying user ${socket.userId}`);
 
-      // Get call details from database
-      const call = await Call.findById(activeCall.callId)
-        .populate('initiator', 'name profilePhoto email');
+    // Get call details from database
+    const call = await Call.findById(activeCall.callId)
+      .populate('initiator', 'name profilePhoto email');
 
-      if (call) {
-        // Get caller info
-        const caller = await User.findById(call.initiator._id || call.initiator)
-          .select('name profilePhoto email');
+    if (call) {
+      // Get caller info
+      const caller = await User.findById(call.initiator._id || call.initiator)
+        .select('name profilePhoto email');
 
-        // Send incoming_call event to this specific user
-        socket.emit('incoming_call', {
-          callId: call._id.toString(),
-          roomId: roomId,
-          roomName: room.name,
-          callType: call.callType,
-          status: activeCall.status,
-          caller: {
-            id: caller._id.toString(),
-            name: caller.name,
-            avatar: caller.profilePhoto || null,
-            email: caller.email
-          },
-          participants: Array.from(activeCall.participants).map(uid => ({
-            id: uid
-          })),
-          startTime: call.createdAt || new Date(),
-          timestamp: new Date()
-        });
+      // ✅ FIX: Fetch full participant data
+      const participantIds = Array.from(activeCall.participants);
+      const participantUsers = await User.find({
+        _id: { $in: participantIds }
+      }).select('name profilePhoto email');
 
-        console.log(`   ✅ Sent active call notification to user ${socket.userId}`);
-      }
+      const participantsData = participantUsers.map(user => ({
+        id: user._id.toString(),
+        name: user.name,
+        avatar: user.profilePhoto || null,
+        email: user.email
+      }));
+
+      // Send incoming_call event to this specific user
+      socket.emit('incoming_call', {
+        callId: call._id.toString(),
+        roomId: roomId,
+        roomName: room.name,
+        callType: call.callType,
+        status: activeCall.status,
+        caller: {
+          id: caller._id.toString(),
+          name: caller.name,
+          avatar: caller.profilePhoto || null,
+          email: caller.email
+        },
+        participants: participantsData,  // ✅ FIXED: Full data
+        startTime: call.createdAt || new Date(),
+        timestamp: new Date()
+      });
+
+      console.log(`   ✅ Sent active call notification to user ${socket.userId}`);
     }
-  } catch (callError) {
-    console.error('❌ Error checking active call:', callError);
   }
+} catch (callError) {
+  console.error('❌ Error checking active call:', callError);
+}
 });
     // ✅ TYPING INDICATOR - User started typing
     socket.on("typing", async ({ roomId, isTyping }) => {
