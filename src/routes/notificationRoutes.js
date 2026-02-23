@@ -4,18 +4,13 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/userModel");
 const authMiddleware = require("../middleware/auth");
+const { handleValidation } = require("../middleware/validate");
+const notificationValidators = require("../validators/notificationValidators");
 
 // Save FCM token
-router.post("/register-token", authMiddleware, async (req, res) => {
+router.post("/register-token", authMiddleware, ...notificationValidators.registerToken, handleValidation, async (req, res) => {
   try {
     const { token, device } = req.body;
-
-    if (!token) {
-      return res.status(400).json({ 
-        success: false,  // ADD THIS
-        message: "FCM token is required" 
-      });
-    }
 
     const user = await User.findById(req.user.id);
     if (!user) {
@@ -43,16 +38,9 @@ router.post("/register-token", authMiddleware, async (req, res) => {
 });
 
 // Remove FCM token (on logout)
-router.post("/remove-token", authMiddleware, async (req, res) => {
+router.post("/remove-token", authMiddleware, ...notificationValidators.removeToken, handleValidation, async (req, res) => {
   try {
     const { token } = req.body;
-
-    if (!token) {
-      return res.status(400).json({ 
-        success: false,  // ADD THIS
-        message: "FCM token is required" 
-      });
-    }
 
     const user = await User.findById(req.user.id);
     if (!user) {
@@ -79,14 +67,14 @@ router.post("/remove-token", authMiddleware, async (req, res) => {
 });
 
 // Update notification settings
-router.put("/settings", authMiddleware, async (req, res) => {
+router.put("/settings", authMiddleware, ...notificationValidators.updateSettings, handleValidation, async (req, res) => {
   try {
-    const { enabled, messageNotifications, soundEnabled } = req.body;
+    const { enabled, messageNotifications, soundEnabled, callNotifications } = req.body;
 
     const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ 
-        success: false,  // ADD THIS
+        success: false,
         message: "User not found" 
       });
     }
@@ -99,6 +87,9 @@ router.put("/settings", authMiddleware, async (req, res) => {
     }
     if (soundEnabled !== undefined) {
       user.notificationSettings.soundEnabled = soundEnabled;
+    }
+    if (callNotifications !== undefined) {
+      user.notificationSettings.callNotifications = callNotifications;
     }
 
     await user.save();

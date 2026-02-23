@@ -278,10 +278,16 @@ try {
           return;
         }
 
+        // Determine messageType for storage and socket payload
+        let messageType = "text";
+        if (imageUrl && !voiceUrl) messageType = "image";
+        else if (voiceUrl) messageType = "voice";
+
         // Save message to database
         const message = await Message.create({
           roomId,
           sender: socket.userId,
+          messageType,
           text: text || "",
           imageUrl: imageUrl || null,
           voiceUrl: voiceUrl || null,
@@ -294,7 +300,7 @@ try {
         const populated = await Message.findById(message._id)
           .populate("sender", "name email profilePhoto");
 
-        // Prepare payload for clients
+        // Prepare payload for clients (include messageType so FE parses image/voice correctly)
         const payload = {
           _id: populated._id,
           roomId: populated.roomId,
@@ -304,6 +310,7 @@ try {
             email: populated.sender.email,
             profilePhoto: populated.sender.profilePhoto || null
           },
+          messageType: populated.messageType || "text",
           text: populated.text,
           imageUrl: populated.imageUrl,
           voiceUrl: populated.voiceUrl,
@@ -311,6 +318,7 @@ try {
           isDeleted: populated.isDeleted,
           createdAt: populated.createdAt
         };
+        if (populated.callData) payload.callData = populated.callData;
 
         // Broadcast to all users in room (including sender)
         io.to(roomId).emit("receiveMessage", payload);

@@ -30,7 +30,7 @@ exports.createRoom = async (req, res) => {
       .populate('createdBy', 'name email profilePhoto')
       .populate('members', 'name email profilePhoto');
 
-    res.json(populatedRoom);
+    res.json({ room: populatedRoom });
   } catch (err) {
     console.error("Create room error:", err);
     res.status(500).json({ message: "Failed to create room" });
@@ -58,7 +58,7 @@ exports.joinRoomByCode = async (req, res) => {
       .populate('createdBy', 'name email profilePhoto')
       .populate('members', 'name email profilePhoto');
 
-    res.json(populatedRoom);
+    res.json({ room: populatedRoom });
   } catch (err) {
     console.error("Join room error:", err);
     res.status(500).json({ message: "Failed to join room" });

@@ -210,7 +210,8 @@ async function sendCallNotification(
   callType,
   roomId,
   callId,
-  callerAvatar = null
+  callerAvatar = null,
+  callerId = null
 ) {
   try {
     if (!fcmTokens || fcmTokens.length === 0) {
@@ -225,6 +226,7 @@ async function sendCallNotification(
         callType: callType,
         roomId: roomId,
         callId: callId,
+        callerId: callerId || "",
         callerName: callerName,
         roomName: roomName,
         callerAvatar: callerAvatar || "",

@@ -44,7 +44,7 @@ exports.sendOtp = async (req, res) => {
     user.otpExpiry = Date.now() + 5 * 60 * 1000;
     await user.save();
 
-    await sendEmail(email, `Your Baatkro OTP: ${otp}`, otp);
+    await sendEmail(email, `Your Baatkaro OTP: ${otp}`, otp);
 
     res.json({ message: "OTP sent successfully" });
   } catch (err) {

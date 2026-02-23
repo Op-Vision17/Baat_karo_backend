@@ -5,7 +5,7 @@ exports.getOTPEmailHTML = (otp, recipientName = 'User') => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Baatkro OTP</title>
+    <title>Your Baatkaro OTP</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7fa;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f7fa; padding: 40px 0;">
@@ -18,7 +18,7 @@ exports.getOTPEmailHTML = (otp, recipientName = 'User') => {
                     <tr>
                         <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
                             <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700;">
-                                💬 Baatkro
+                                💬 Baatkaro
                             </h1>
                             <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 16px; opacity: 0.9;">
                                 Your Real-Time Chat Platform
@@ -33,7 +33,7 @@ exports.getOTPEmailHTML = (otp, recipientName = 'User') => {
                             </h2>
                             
                             <p style="margin: 0 0 30px 0; color: #4a5568; font-size: 16px; line-height: 1.6;">
-                                Welcome to <strong>Baatkro</strong>! We're excited to have you join our community. 
+                                Welcome to <strong>Baatkaro</strong>! We're excited to have you join our community. 
                                 To complete your login, please use the OTP code below:
                             </p>
                             
@@ -65,7 +65,7 @@ exports.getOTPEmailHTML = (otp, recipientName = 'User') => {
                                         </p>
                                         <ul style="margin: 0; padding-left: 20px; color: #4a5568; font-size: 14px; line-height: 1.8;">
                                             <li>Never share your OTP with anyone</li>
-                                            <li>Baatkro will never ask for your OTP via phone or email</li>
+                                            <li>Baatkaro will never ask for your OTP via phone or email</li>
                                             <li>Always verify the sender's email address</li>
                                         </ul>
                                     </td>
@@ -85,7 +85,7 @@ exports.getOTPEmailHTML = (otp, recipientName = 'User') => {
                             </p>
                             
                             <p style="margin: 0 0 15px 0; color: #a0aec0; font-size: 12px;">
-                                © ${new Date().getFullYear()} Baatkro. All rights reserved.
+                                © ${new Date().getFullYear()} Baatkaro. All rights reserved.
                             </p>
                             
                             <!-- Social Links (Optional) -->

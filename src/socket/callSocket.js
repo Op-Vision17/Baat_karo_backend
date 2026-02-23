@@ -259,7 +259,8 @@ module.exports = (io, activeCalls) => {
                   callType,
                   roomId,
                   call._id.toString(),
-                  caller.profilePhoto || null
+                  caller.profilePhoto || null,
+                  caller._id.toString()
                 );
 
                 if (result.success) {

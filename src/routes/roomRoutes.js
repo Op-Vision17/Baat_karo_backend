@@ -1,5 +1,7 @@
 const router = require("express").Router();
 const auth = require("../middleware/auth");
+const { handleValidation } = require("../middleware/validate");
+const roomValidators = require("../validators/roomValidators");
 const {
   createRoom,
   joinRoomByCode,
@@ -11,13 +13,13 @@ const {
   getRoomMessages
 } = require("../controllers/roomController");
 
-router.post("/create", auth, createRoom);
-router.post("/join", auth, joinRoomByCode);
-router.get("/my-rooms", auth, getUserRooms); 
-router.get("/:roomId", auth, getRoomDetails); 
-router.put("/:roomId", auth, updateRoom); 
-router.delete("/:roomId", auth, deleteRoom); 
-router.post("/:roomId/leave", auth, leaveRoom); 
-router.get("/:roomId/messages", auth, getRoomMessages);
+router.post("/create", auth, ...roomValidators.createRoom, handleValidation, createRoom);
+router.post("/join", auth, ...roomValidators.joinRoom, handleValidation, joinRoomByCode);
+router.get("/my-rooms", auth, getUserRooms);
+router.get("/:roomId", auth, ...roomValidators.roomIdParam, handleValidation, getRoomDetails);
+router.put("/:roomId", auth, ...roomValidators.updateRoom, handleValidation, updateRoom);
+router.delete("/:roomId", auth, ...roomValidators.roomIdParam, handleValidation, deleteRoom);
+router.post("/:roomId/leave", auth, ...roomValidators.roomIdParam, handleValidation, leaveRoom);
+router.get("/:roomId/messages", auth, ...roomValidators.roomIdParam, handleValidation, getRoomMessages);
 
 module.exports = router;
