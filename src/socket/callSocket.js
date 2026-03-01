@@ -172,7 +172,20 @@ module.exports = (io, activeCalls) => {
           const populatedMessage = await Message.findById(callMessage._id)
             .populate("sender", "name email profilePhoto");
 
-          // Broadcast call message to room
+          // Broadcast call message to room (ensure callData IDs are strings for client)
+          const cd = populatedMessage.callData || {};
+          const callDataPayload = {
+            callId: (cd.callId && cd.callId.toString()) || call._id.toString(),
+            callType: cd.callType || callType,
+            status: cd.status || "ongoing",
+            initiatorId: (cd.initiatorId && cd.initiatorId.toString()) || socket.userId.toString(),
+            initiatorName: cd.initiatorName || caller.name,
+            startTime: cd.startTime || call.createdAt,
+            endTime: cd.endTime || null,
+            duration: cd.duration ?? null,
+            participantCount: cd.participantCount ?? 1,
+            wasAnswered: cd.wasAnswered ?? false
+          };
           io.to(roomId).emit("receiveMessage", {
             _id: populatedMessage._id,
             roomId: populatedMessage.roomId,
@@ -183,7 +196,7 @@ module.exports = (io, activeCalls) => {
               profilePhoto: populatedMessage.sender.profilePhoto || null
             },
             messageType: populatedMessage.messageType,
-            callData: populatedMessage.callData,
+            callData: callDataPayload,
             isDeleted: populatedMessage.isDeleted,
             createdAt: populatedMessage.createdAt
           });
