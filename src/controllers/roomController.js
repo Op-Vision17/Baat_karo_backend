@@ -221,8 +221,8 @@ exports.getRoomMessages = async (req, res) => {
       .populate("sender", "name email profilePhoto")
       .sort({ createdAt: 1 });
 
-    // Transform messages: for deleted ones, hide content but keep metadata
-    const transformedMessages = messages.map(msg => {
+    // Transform messages: for deleted ones, hide content; for call messages ensure callData has string IDs
+    const transformedMessages = messages.map((msg) => {
       if (msg.isDeleted) {
         return {
           _id: msg._id,
@@ -238,7 +238,23 @@ exports.getRoomMessages = async (req, res) => {
           updatedAt: msg.updatedAt
         };
       }
-      return msg;
+      const plain = msg.toObject ? msg.toObject() : { ...msg };
+      if (plain.messageType === "call" && plain.callData) {
+        const cd = plain.callData;
+        plain.callData = {
+          callId: (cd.callId && cd.callId.toString()) || "",
+          callType: cd.callType || "audio",
+          status: cd.status || "ongoing",
+          initiatorId: (cd.initiatorId && cd.initiatorId.toString()) || "",
+          initiatorName: cd.initiatorName || "",
+          startTime: cd.startTime,
+          endTime: cd.endTime || null,
+          duration: cd.duration ?? null,
+          participantCount: cd.participantCount ?? 0,
+          wasAnswered: cd.wasAnswered ?? false
+        };
+      }
+      return plain;
     });
 
     res.json(transformedMessages);
